@@ -329,6 +329,7 @@ export component AddonRowView inherits Rectangle {
     in property <AddonRow> addon;
     callback action(); callback toggle(); callback remove(); callback open(); callback details();
     height: root.addon.warning != "" || root.addon.action != "" ? 112px : 92px;
+    clip: true;
     border-radius: 12px; border-width: 1px;
     border-color: root.addon.status-kind == 2 ? #36598C : hover.has-hover ? Theme.outline : Theme.line;
     background: hover.has-hover ? Theme.row-hover : Theme.row;
@@ -343,7 +344,9 @@ export component AddonRowView inherits Rectangle {
             alignment: center; spacing: 4px; horizontal-stretch: 1;
             AddonHeading { name: root.addon.name; badge: root.addon.badge; verified: root.addon.badge-verified; muted: root.addon.disabled; clicked => { root.details(); } }
             Text { text: root.addon.version + (root.addon.author != "" ? (root.addon.version != "" ? "  ·  " : "") + root.addon.author : ""); color: Theme.text-muted; font-size: Theme.meta; overflow: elide; }
-            Text { text: root.addon.warning != "" ? root.addon.warning : root.addon.description; color: root.addon.warning != "" ? Theme.warn : Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; overflow: elide; max-height: root.addon.warning != "" ? 45px : 18px; }
+            Rectangle { height: root.addon.warning != "" ? 30px : 18px; clip: true;
+                Text { x: 0px; y: 0px; width: parent.width; height: parent.height; text: root.addon.warning != "" ? root.addon.warning : root.addon.description; color: root.addon.warning != "" ? Theme.warn : Theme.text-muted; font-size: Theme.meta; wrap: root.addon.warning != "" ? word-wrap : no-wrap; overflow: elide; }
+            }
         }
         VerticalLayout {
             alignment: center; spacing: 6px; width: 190px;

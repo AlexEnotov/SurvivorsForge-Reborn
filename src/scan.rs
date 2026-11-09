@@ -17,6 +17,16 @@ pub fn disabled_dir(addons_dir: &Path) -> PathBuf {
     addons_dir.parent().unwrap_or(addons_dir).join("AddOns.disabled")
 }
 
+/// Folder birth time is useful for pre-existing addons, unlike modification time
+/// which changes when their files are updated. Some filesystems do not expose it.
+pub fn created_at(addons_dir: &Path, folders: &[String]) -> Option<u64> {
+    folders.iter().filter(|folder| forge_core::folder::windows_safe_folder(folder)).filter_map(|folder| {
+        let active=addons_dir.join(folder);
+        let path=if active.is_dir() { active } else { disabled_dir(addons_dir).join(folder) };
+        std::fs::metadata(path).ok()?.created().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs()).filter(|time| *time > 0)
+    }).min()
+}
+
 /// The addons of the AddOns folder and the disabled ones beside it. An addon is a folder `<Name>/`
 /// holding `<Name>.toc` (the WoW 1.12 rule). Files (like `account.txt`) and hidden folders are
 /// skipped and never read. A disabled folder that is also in AddOns counts as the one in AddOns.

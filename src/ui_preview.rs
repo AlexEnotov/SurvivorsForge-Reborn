@@ -58,7 +58,7 @@ fn capture_ui() {
     };
     ui.set_installed_rows(crate::model(vec![
         row("a","Combat Meter","Update: v1.3.0",2,"Update","Disable"),
-        row("b","Build Planner","Up to date",1,"","Disable"),
+        crate::AddonRow { description:"Build planner for Azeroth Survivors: plan spells and jewelry for every class, follow them in a small window while you play, share builds with a code, and keep reading this deliberately long description which must stay inside its card.".into(),..row("b","Build Planner","Up to date",1,"","Disable") },
         row("c","Quest Tracker","Installed from zip",0,"","Enable"),
         crate::AddonRow { warning:"This addon uses a different Interface version. Check compatibility with Reborn.".into(),..row("d","Extended Tooltip","Not managed",0,"","Disable") },
     ]));

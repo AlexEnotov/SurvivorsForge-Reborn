@@ -136,8 +136,12 @@ impl Core {
                 let mut changed = false;
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
                 for row in controller::installed_rows(&self.state, &self.reconciled, &self.scan, &self.registry, &self.statuses) {
-                    let installed = self.state.get(&row.id).map(|e| e.installed_at).unwrap_or(0);
-                    changed |= self.config.observe_addon(&row.id, installed, now);
+                    changed |= if let Some(entry)=self.state.get(&row.id) {
+                        self.config.observe_addon(&row.id,entry.installed_at,now)
+                    } else {
+                        let created=survivorsforge::scan::created_at(self.addons_dir(),&row.folders);
+                        self.config.observe_unmanaged(&row.id,created,now)
+                    };
                 }
                 if changed { let _ = self.config.save(&self.data_dir); }
                 self.reload_icons();

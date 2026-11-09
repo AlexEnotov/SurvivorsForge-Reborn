@@ -111,7 +111,7 @@ pub fn install_zip_with(addons_dir: &Path, state: &mut State, request: Request, 
         source: request.source,
         folders: detected.into_iter().map(|a| a.name).collect(),
         version: request.version,
-        installed_at: crate::now_secs(),
+        installed_at: state.get(request.id).map(|old| old.installed_at).filter(|date| *date > 0).unwrap_or_else(crate::now_secs),
     };
     state.upsert(entry.clone());
     Ok(entry)

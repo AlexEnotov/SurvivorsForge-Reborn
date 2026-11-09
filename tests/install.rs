@@ -108,8 +108,10 @@ fn update_removes_stale_files() {
     let mut state = State::default();
     let v1 = make_zip(&e.zips, "v1.zip", &[("A/A.toc", "## Version: 1"), ("A/old.lua", "local old = true")]);
     install_zip(&e.addons, &mut state, request(&v1, "a")).unwrap();
+    state.entries.iter_mut().find(|entry| entry.id == "a").unwrap().installed_at=123;
     let v2 = make_zip(&e.zips, "v2.zip", &[("A/A.toc", "## Version: 2"), ("A/new.lua", "local new = true")]);
     install_zip(&e.addons, &mut state, Request { version: "v2".into(), ..request(&v2, "a") }).unwrap();
+    assert_eq!(state.get("a").unwrap().installed_at,123,"Updating keeps the original installation date");
     assert!(!e.addons.join("A/old.lua").exists());
     assert!(e.addons.join("A/new.lua").is_file());
     assert_eq!(state.entries.len(), 1);

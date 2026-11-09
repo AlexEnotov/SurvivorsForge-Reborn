@@ -57,6 +57,15 @@ impl Config {
         true
     }
 
+    /// Repair dates from builds that assigned "now" to all pre-existing folders.
+    /// Retain an earlier remembered date when a folder is replaced or copied later.
+    pub fn observe_unmanaged(&mut self, id: &str, created_at: Option<u64>, now: u64) -> bool {
+        let key=self.observation_key(id);
+        let date=created_at.filter(|date| *date > 0 && *date <= now).unwrap_or(now);
+        if self.first_seen.get(&key).is_some_and(|old| *old > 0 && *old <= date) { return false; }
+        self.first_seen.insert(key,date); true
+    }
+
     pub fn load(dir: &Path) -> Option<Config> {
         let text = std::fs::read_to_string(dir.join(FILE)).ok()?;
         serde_json::from_str(&text).ok()
@@ -200,6 +209,22 @@ pub fn validate_addons_dir(path: &Path) -> Result<Option<DirWarning>, DirError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preexisting_folders_are_not_newer_than_the_last_managed_install() {
+        let mut config=Config::default();
+        // Reproduce ui6: every unmanaged folder was first seen after the last install.
+        config.observe_addon("folder:old",0,3000);
+        config.observe_addon("gh:latest",2000,3000);
+        assert!(config.observe_unmanaged("folder:old",Some(1000),3000));
+        let old=config.observed_at("folder:old"); let new=config.observed_at("gh:latest");
+        assert_eq!(old,1000);
+        assert!(crate::controller::compare_listing(0,"Latest","",new,false,"Old","",old,false).is_lt());
+        assert!(crate::controller::compare_listing(1,"Old","",old,false,"Latest","",new,false).is_lt());
+        assert!(!config.observe_unmanaged("folder:old",Some(2500),4000));
+        assert!(!config.observe_unmanaged("folder:old",None,5000));
+        assert_eq!(config.observed_at("folder:old"),1000);
+    }
 
     #[test]
     fn observation_dates_survive_updates_and_are_scoped_to_the_game_folder() {

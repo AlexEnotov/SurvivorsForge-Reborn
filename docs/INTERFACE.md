@@ -17,8 +17,10 @@ Updated 2026-11-09. Native Slint interface; dark blue theme, Segoe UI.
 - Six saved sort choices: newest added (default), oldest added, name ascending,
   name descending, author and updates first. Installed dates are remembered from
   the install time or first observation, scoped to each game folder, and do not
-  change when an addon is updated. Pre-existing untracked addons have no reliable
-  historical installation date; ties use the name. Catalog `added_at` is recorded
+  change when an addon is updated. Pre-existing untracked addons use their folder
+  creation time where the filesystem exposes it, otherwise first observation;
+  ties use the name. Older first-observation dates are repaired from folder birth
+  times when available. Catalog `added_at` is recorded
   on first generation and preserved on subsequent runs. Unknown catalog dates
   sort after known dates. View and sort choices are saved in local configuration.
 - A compact GitHub button appears when a repository is known from the install
