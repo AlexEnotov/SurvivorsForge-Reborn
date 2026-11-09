@@ -246,14 +246,15 @@ export component AppWindow inherits Window {
             width: 216px; background: Theme.sidebar;
             VerticalLayout {
                 padding: 18px; spacing: 8px;
-                HorizontalLayout {
-                    padding-top: 14px; padding-bottom: 24px; spacing: 12px;
-                    Image { width: 44px; height: 44px; source: @image-url("../assets/branding/reborn-ui.png"); image-fit: contain; }
-                    VerticalLayout {
-                        spacing: 2px;
-                        Text { text: "REBORN"; color: Theme.text; font-size: 18px; font-weight: 700; }
-                        Text { text: "ADDON MANAGER"; color: Theme.text-muted; font-size: 10px; letter-spacing: 1px; }
+                VerticalLayout {
+                    height: root.height < 720px ? 124px : 156px;
+                    padding-bottom: 8px; spacing: 4px;
+                    HorizontalLayout {
+                        alignment: center;
+                        Image { width: root.height < 720px ? 72px : 96px; height: self.width; source: @image-url("../assets/branding/reborn-ui.png"); image-fit: contain; }
                     }
+                    Text { height: 22px; text: "REBORN"; horizontal-alignment: center; color: Theme.text; font-size: 18px; font-weight: 700; }
+                    Text { height: 14px; text: "ADDON MANAGER"; horizontal-alignment: center; color: Theme.text-muted; font-size: 10px; letter-spacing: 1px; }
                 }
                 NavItem { text: @tr("Installed"); count: root.installed-total; active: root.page == 0; clicked => { root.page = 0; } }
                 NavItem { text: @tr("Catalog"); active: root.page == 1; clicked => { root.page = 1; } }
