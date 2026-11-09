@@ -58,6 +58,16 @@ fn reborn_out_of_date(toc: &crate::toc::Toc) -> bool {
 
 pub const UNMANAGED_PREFIX: &str = "folder:";
 
+/// A source link is informational; it does not enrol a local addon in updates.
+fn toc_repo(toc: &crate::toc::Toc) -> Option<String> {
+    toc.source_urls.iter().find_map(|raw| {
+        let url = url::Url::parse(raw).ok()?;
+        if !matches!(url.scheme(), "https" | "http") || url.host_str() != Some("github.com")
+            || !url.username().is_empty() || url.password().is_some() || url.port().is_some() { return None; }
+        crate::github::normalize_repo(raw).ok()
+    })
+}
+
 /// `toc:1.0` -> `1.0`, `zip:file.zip` -> `file.zip`, a 40-char SHA -> its first 7 characters.
 pub fn display_version(version: &str) -> String {
     if let Some(v) = version.strip_prefix(TOC_PREFIX) {
@@ -109,7 +119,7 @@ pub fn installed_rows(
                 ),
                 Source::Zip { .. } => (
                     Badge::Zip,
-                    None,
+                    toc.and_then(toc_repo),
                     toc.and_then(|t| t.author.clone()).unwrap_or_default(),
                     toc.and_then(|t| t.notes.clone()).unwrap_or_default(),
                 ),
@@ -147,7 +157,7 @@ pub fn installed_rows(
         badge: Badge::Unmanaged,
         state: RowState::Unmanaged,
         description: addon.toc.notes.clone().unwrap_or_default(),
-        repo: None,
+        repo: toc_repo(&addon.toc),
         out_of_date: reborn_out_of_date(&addon.toc),
         folders: vec![addon.folder.clone()],
     }));
@@ -292,6 +302,21 @@ mod tests {
 
     fn zip_source() -> Source {
         Source::Zip { file_name: "a.zip".into() }
+    }
+
+    #[test]
+    fn explicit_local_github_links_do_not_enable_managed_updates() {
+        let toc = Toc::parse("## Website: https://example.org/addon\n## X-GitHub: https://github.com/example/addon/tree/main\n", "LocalAddon");
+        assert_eq!(toc_repo(&toc).as_deref(), Some("example/addon"));
+        for url in ["https://github.com.evil.test/example/addon", "file:///example/addon", "https://user:password@github.com/example/addon"] {
+            assert!(toc_repo(&Toc::parse(&format!("## X-Website: {url}"), "LocalAddon")).is_none());
+        }
+        let scan = vec![InstalledAddon { folder: "LocalAddon".into(), toc, disabled: false }];
+        let state = State::default();
+        let rows = installed_rows(&state, &state.reconcile(&scan), &scan, &Registry::embedded(), &HashMap::new());
+        assert_eq!(rows[0].repo.as_deref(), Some("example/addon"));
+        assert_eq!(rows[0].state, RowState::Unmanaged);
+        assert_eq!(rows[0].badge, Badge::Unmanaged);
     }
 
     #[test]

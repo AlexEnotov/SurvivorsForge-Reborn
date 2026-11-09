@@ -10,6 +10,10 @@ Updated 2026-11-09. Native Slint interface; dark blue theme, Segoe UI.
   and on the first-run screen.
 - Installed: search, All/Enabled/Disabled/Updates filters, cards with source,
   version, status, explicit switches and separate update/remove actions.
+- A compact GitHub button appears when a repository is known from the install
+  source, catalog or explicit GitHub URL in local TOC metadata (Website,
+  X-Website, X-GitHub, X-GitHub-Repo, X-Repository or X-Source). A local source
+  link does not enable managed updates or change the addon's ownership.
 - Mixed character settings are shown as Mixed, with a distinct amber switch.
 - Catalog: shows a useful empty state while hosting is not configured; ZIP and
   GitHub installation remain available. No external catalog is requested for UI previews.

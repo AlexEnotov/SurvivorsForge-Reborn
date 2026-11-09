@@ -67,6 +67,10 @@ fn capture_ui() {
         ui.window().dispatch_event(WindowEvent::PointerReleased{position,button:PointerEventButton::Left});
     };
     click(1100.0,329.0); assert!(toggled.get(),"The visible switch invokes its addon callback");
+    let opened=Rc::new(std::cell::RefCell::new(String::new()));
+    let seen=opened.clone(); ui.on_row_open(move |id| *seen.borrow_mut()=id.to_string());
+    click(414.0,325.0);
+    assert_eq!(*opened.borrow(),"a","The compact GitHub button opens the selected addon's source");
     let launches=Rc::new(std::cell::RefCell::new(Vec::new()));
     let seen=launches.clone(); ui.on_launch_game(move |checked| seen.borrow_mut().push(checked));
     click(100.0,630.0); click(100.0,668.0);

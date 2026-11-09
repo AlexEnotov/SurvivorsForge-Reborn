@@ -166,12 +166,14 @@ impl Core {
     }
 
     fn repo_of(&self, id: &str) -> Option<String> {
-        match self.state.get(id).map(|e| &e.source) {
+        let managed = match self.state.get(id).map(|e| &e.source) {
             Some(Source::GitHub { repo, .. }) => Some(repo.clone()),
             Some(Source::Verified { registry_id }) => self.registry.get(registry_id).map(|a| a.repo.clone()),
             Some(Source::Zip { .. }) => None,
             None => self.registry.get(id).map(|a| a.repo.clone()),
-        }
+        };
+        managed.or_else(|| controller::installed_rows(&self.state, &self.reconciled, &self.scan, &self.registry, &self.statuses)
+            .into_iter().find(|row| row.id == id).and_then(|row| row.repo))
     }
 }
 

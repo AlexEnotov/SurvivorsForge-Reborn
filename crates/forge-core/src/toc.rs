@@ -12,6 +12,7 @@ pub struct Toc {
     pub author: Option<String>,
     pub dependencies: Vec<String>,
     pub icon_texture: Option<String>,
+    pub source_urls: Vec<String>,
 }
 
 impl Toc {
@@ -32,6 +33,7 @@ impl Toc {
                 "version" => toc.version = value,
                 "interface" => toc.interface = value,
                 "icontexture" => toc.icon_texture = value,
+                "website" | "x-website" | "x-github" | "x-github-repo" | "x-repository" | "x-source" => toc.source_urls.push(value.unwrap()),
                 "notes" => toc.notes = value.map(|v| strip_colors(&v)),
                 "author" => toc.author = value.map(|v| strip_colors(&v)),
                 "dependencies" | "requireddeps" | "requireddependencies" => {

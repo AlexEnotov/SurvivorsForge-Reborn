@@ -325,7 +325,7 @@ export component AddonRowView inherits Rectangle {
             HorizontalLayout {
                 spacing: 12px; alignment: start;
                 LinkButton { text: @tr("Details"); clicked => { root.details(); } }
-                if root.addon.can-open : LinkButton { text: "GitHub"; clicked => { root.open(); } }
+                if root.addon.can-open : ActionButton { height: 22px; text: "GitHub ↗"; clicked => { root.open(); } }
                 if root.addon.can-remove && !root.addon.busy : LinkButton { text: @tr("Remove"); danger: true; clicked => { root.remove(); } }
             }
         }
