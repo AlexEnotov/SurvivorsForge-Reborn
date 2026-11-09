@@ -30,6 +30,8 @@ struct Removed {
 }
 
 struct Core {
+    icons: HashMap<String, survivorsforge::icons::Pixels>,
+    loading_icons: bool,
     list_filter: i32,
     addon_switches: survivorsforge::addon_enable::Store,
     removed: Option<Removed>,
@@ -59,6 +61,8 @@ impl Core {
     fn new(data_dir: PathBuf, config: Option<Config>) -> Core {
         let registry = registry::load(Err(Error::Network("not loaded yet".into())), &data_dir.join("cache")).0;
         let mut core = Core {
+            icons: HashMap::new(),
+            loading_icons: false,
             list_filter: 0,
             addon_switches: survivorsforge::addon_enable::Store::default(),
             removed: None,
@@ -128,8 +132,25 @@ impl Core {
                 }
                 self.reconciled = self.state.reconcile(&scan);
                 self.scan = scan;
+                self.reload_icons();
             }
             Err(e) => self.set_status(format!("Cannot read the AddOns folder: {e}"), true),
+        }
+    }
+
+    fn reload_icons(&mut self) {
+        self.icons.clear();
+        let cache=self.data_dir.join("cache");
+        let rows=controller::installed_rows(&self.state,&self.reconciled,&self.scan,&self.registry,&self.statuses);
+        for row in rows {
+            let catalog=self.registry.get(&row.id).or_else(|| row.repo.as_ref().and_then(|repo| self.registry.by_repo(repo)))
+                .or_else(|| self.registry.addons.iter().find(|a| a.folders.iter().any(|f| row.folders.iter().any(|r| r.eq_ignore_ascii_case(f)))));
+            let pixels=catalog.and_then(|a| a.icon_url.as_deref()).and_then(|url| survivorsforge::icons::cached(url,&cache))
+                .or_else(|| survivorsforge::icons::local(self.addons_dir(),&row.folders));
+            if let Some(pixels)=pixels { self.icons.insert(row.id,pixels); }
+        }
+        for addon in &self.registry.addons {
+            if let Some(pixels)=addon.icon_url.as_deref().and_then(|url| survivorsforge::icons::cached(url,&cache)) { self.icons.insert(addon.id.clone(),pixels); }
         }
     }
 
@@ -162,6 +183,10 @@ fn initial(name: &str) -> SharedString {
     name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().to_string()).unwrap_or_default().into()
 }
 
+fn icon_image(pixels: Option<&survivorsforge::icons::Pixels>) -> slint::Image {
+    pixels.map(|p| slint::Image::from_rgba8(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&p.rgba,p.width,p.height))).unwrap_or_default()
+}
+
 fn installed_row(row: &Row, core: &Core) -> AddonRow {
     let (status, kind, action) = match &row.state {
         RowState::Unchecked => (if core.checking { "Checking..." } else { "Not checked" }.to_string(), 0, ""),
@@ -178,6 +203,7 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
         _ => String::new(),
     };
     AddonRow {
+        icon: icon_image(core.icons.get(&row.id)),
         id: row.id.clone().into(),
         name: row.name.clone().into(),
         initial: initial(&row.name),
@@ -224,6 +250,7 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
             .into_iter()
             .filter(|b| controller::matches(&core.search, &b.name, &b.author))
             .map(|b| AddonRow {
+                icon: icon_image(core.icons.get(&b.id)),
                 initial: initial(&b.name),
                 id: b.id.clone().into(),
                 name: b.name.into(),
@@ -244,6 +271,9 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
             })
             .collect(),
     ));
+    if ui.get_details_open() {
+        let mut detail=ui.get_detail_addon(); detail.icon=icon_image(core.icons.get(detail.id.as_str())); ui.set_detail_addon(detail);
+    }
     ui.set_switches_available(core.addon_switches.available());
     ui.set_can_undo(core.removed.is_some());
     ui.set_update_count(controller::update_all_ids(&core.statuses).len() as i32);
@@ -452,6 +482,31 @@ fn on_update_all(ui: &AppWindow, shared: &Shared) {
     });
 }
 
+fn fetch_catalog_icons(weak: slint::Weak<AppWindow>, shared: Shared) {
+    let (jobs,cache,addons)={
+        let mut core=lock(&shared);
+        if core.loading_icons { return; }
+        core.loading_icons=true;
+        (core.registry.addons.iter().filter_map(|a| a.icon_url.as_ref().filter(|s| !s.is_empty()).map(|url| (a.id.clone(),a.repo.clone(),url.clone(),a.folders.clone()))).collect::<Vec<_>>(),core.data_dir.join("cache"),core.addons_dir().to_path_buf())
+    };
+    std::thread::spawn(move || {
+        let client=Client::new();
+        for (id,repo,url,folders) in jobs {
+            if lock(&shared).addons_dir()!=addons { break; }
+            let pixels=survivorsforge::icons::fetch(&client,&url,&repo,&cache).or_else(|| survivorsforge::icons::local(&addons,&folders));
+            {
+                let mut core=lock(&shared);
+                let rows=controller::installed_rows(&core.state,&core.reconciled,&core.scan,&core.registry,&core.statuses);
+                let mut ids=vec![id];
+                ids.extend(rows.into_iter().filter(|row| row.repo.as_ref().is_some_and(|r| r.eq_ignore_ascii_case(&repo)) || row.folders.iter().any(|f| folders.iter().any(|a| a.eq_ignore_ascii_case(f)))).map(|row| row.id));
+                for id in ids { if let Some(pixels)=&pixels { core.icons.insert(id,pixels.clone()); } else { core.icons.remove(&id); } }
+            }
+            let updated=shared.clone(); let _=weak.upgrade_in_event_loop(move |ui| refresh(&ui,&updated));
+        }
+        lock(&shared).loading_icons=false;
+    });
+}
+
 fn check_updates(ui: &AppWindow, shared: &Shared) {
     {
         let mut core = lock(shared);
@@ -463,7 +518,8 @@ fn check_updates(ui: &AppWindow, shared: &Shared) {
         core.set_status("Checking for updates...".into(), false);
     }
     refresh(ui, shared);
-    run_bg(ui.as_weak(), shared.clone(), None, |shared| {
+    let icon_weak=ui.as_weak();
+    run_bg(ui.as_weak(), shared.clone(), None, move |shared| {
         let (client, mut state, cache) = {
             let core = lock(shared);
             (core.client(), core.state.clone(), core.data_dir.join("cache"))
@@ -505,9 +561,11 @@ fn check_updates(ui: &AppWindow, shared: &Shared) {
         }
         match origin {
             Origin::Remote => {}
-            Origin::Cache => message += " (verified list: cached copy)",
-            Origin::Embedded => message += " (verified list: built-in copy)",
+            Origin::Cache => message += " (catalog: cached copy)",
+            Origin::Embedded => message += if registry::REMOTE_URL.is_empty() { " (catalog not connected)" } else { " (catalog: built-in copy)" },
         }
+        drop(core);
+        fetch_catalog_icons(icon_weak,shared.clone());
         Ok(message)
     });
 }
@@ -954,6 +1012,8 @@ fn main() -> Result<(), slint::PlatformError> {
         lock(shared).search = text.to_string();
         refresh(&ui, shared);
     });
+    on!(on_open_support, |_ui, _shared| { let _ = open::that("https://github.com/AlexEnotov/SurvivorsForge-Reborn/issues"); });
+    on!(on_open_upstream_source, |_ui, _shared| { let _ = open::that("https://github.com/Rezondes/SurvivorsForge"); });
     on!(on_open_source, |_ui, _shared| { let _ = open::that("https://github.com/AlexEnotov/SurvivorsForge-Reborn"); });
     on!(on_open_addons, |_ui, shared| { let _ = open::that(lock(shared).addons_dir()); });
     on!(on_open_backups, |ui, shared| {
@@ -991,7 +1051,7 @@ fn main() -> Result<(), slint::PlatformError> {
         let target = if launcher { survivorsforge::game::Target::Launcher } else { survivorsforge::game::Target::Game };
         match survivorsforge::game::launch(core.addons_dir(), target) {
             Ok(mut child) => {
-                core.set_status("Game process started".into(), false);
+                core.set_status(if launcher { "Reborn update and error checks started".into() } else { "Game process started".into() }, false);
                 if !launcher {
                     ui.window().set_minimized(true);
                     let weak = ui.as_weak();
@@ -1024,20 +1084,17 @@ fn main() -> Result<(), slint::PlatformError> {
         }
     });
     on!(on_row_details, |ui, shared, id| {
-        let core = lock(shared);
-        let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
-        if let Some(row) = rows.iter().find(|row| row.id == id.as_str()) {
-            ui.set_details_title(row.name.clone().into());
-            let warning = match &row.state {
-                RowState::CheckFailed(message) => message.clone(),
-                _ if row.out_of_date => survivorsforge::i18n::text(&core.config.language, "This addon uses a different Interface version. Check compatibility with Reborn."),
-                _ => String::new(),
-            };
-            ui.set_details_text(format!("{}\n{}\n\n{}\n\n{}\n\n{}", row.author, row.version, row.description, warning, row.folders.join(", ")).trim().into());
+        let core=lock(shared);
+        let rows=controller::installed_rows(&core.state,&core.reconciled,&core.scan,&core.registry,&core.statuses);
+        if let Some(row)=rows.iter().find(|row| row.id==id.as_str()) {
+            ui.set_detail_addon(installed_row(row,&core));
+            ui.set_detail_repo(row.repo.clone().unwrap_or_default().into());
+            ui.set_detail_folders(ModelRc::new(VecModel::from(row.folders.iter().map(|f| SharedString::from(f.as_str())).collect::<Vec<_>>())));
             ui.set_details_open(true);
-        } else if let Some(addon) = core.registry.get(&id) {
-            ui.set_details_title(addon.name.clone().into());
-            ui.set_details_text(format!("{}\n{}\n\n{}\n\n{}", addon.author, addon.repo, addon.description, addon.folders.join(", ")).into());
+        } else if let Some(addon)=core.registry.get(&id) {
+            ui.set_detail_addon(AddonRow { id:addon.id.clone().into(),name:addon.name.clone().into(),initial:initial(&addon.name),author:addon.author.clone().into(),version:addon.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default().into(),description:addon.description.clone().into(),badge:addon.category.clone().into(),icon:icon_image(core.icons.get(&addon.id)),can_open:true,..Default::default() });
+            ui.set_detail_repo(addon.repo.clone().into());
+            ui.set_detail_folders(ModelRc::new(VecModel::from(addon.folders.iter().map(|f| SharedString::from(f.as_str())).collect::<Vec<_>>())));
             ui.set_details_open(true);
         }
     });

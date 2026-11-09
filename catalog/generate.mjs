@@ -15,7 +15,7 @@ export function parseManifest(text) {
     if (!line || line.startsWith('#')) continue;
     const match = /^([a-z_]+)\s*=\s*(.+)$/.exec(line);
     if (!match || Object.hasOwn(result, match[1])) throw Error(`Invalid or duplicate manifest key at line ${index+1}`);
-    const allowed = ['repo','name','author','description','category','folders','asset','verified_tag','verified_sha256'];
+    const allowed = ['repo','name','author','description','category','folders','asset','icon','verified_tag','verified_sha256'];
     if (!allowed.includes(match[1])) throw Error(`Unsupported key: ${match[1]}`);
     const value = JSON.parse(match[2]);
     if (match[1] === 'folders' ? !Array.isArray(value) || !value.length || value.some(v=>typeof v !== 'string') : typeof value !== 'string') throw Error(`Invalid ${match[1]}`);
@@ -24,7 +24,16 @@ export function parseManifest(text) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(result.repo ?? '') || !result.name || !result.category || !result.asset || !result.folders?.length) throw Error('Incomplete addon manifest');
   if (result.folders.some(f=>!f || /[<>:"/\\|?*\x00-\x1f]/.test(f) || /[. ]$/.test(f) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(f))) throw Error('Unsafe addon folder');
   if (Boolean(result.verified_tag) !== Boolean(result.verified_sha256) || (result.verified_sha256 && !/^[a-f\d]{64}$/i.test(result.verified_sha256))) throw Error('Verification requires both tag and SHA-256');
+  result.icon = (result.icon ?? '').trim();
+  if (result.icon && (result.icon.startsWith('/') || /[\\:\x00-\x1f]/.test(result.icon)
+      || result.icon.split('/').some(p=>!p || p==='.' || p==='..')
+      || !/\.(png|jpe?g|webp|tga|bmp|ico)$/i.test(result.icon))) throw Error('icon must be a relative image path in the addon repository, or an empty string');
   return result;
+}
+
+export function iconUrl(repo, branch, icon) {
+  if (!icon) return null;
+  return `https://raw.githubusercontent.com/${repo.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(branch || 'main')}/${icon.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 export function allowedUrl(raw, api = false) {
@@ -102,7 +111,7 @@ export async function generate(manifestDir, outputDir, scanner, transport = requ
     const old = previous.addons.find(a=>a.id===id);
     // Keep the counter snapshot for an unchanged artifact so hourly runs are idempotent.
     const downloads = old?.latest?.sha256 === sha256 ? old.downloads : asset.download_count;
-    addons.push({id,name:manifest.name,author:manifest.author ?? repo.owner.login,repo:manifest.repo,description:manifest.description ?? repo.description ?? '',category:manifest.category,folders:manifest.folders,source:{type:'release',asset:manifest.asset},trust,downloads,latest:{tag:release.tag_name,asset_url:asset.browser_download_url,sha256,size,trust,findings:report.findings,published_at:release.published_at}});
+    addons.push({id,name:manifest.name,author:manifest.author ?? repo.owner.login,repo:manifest.repo,description:manifest.description ?? repo.description ?? '',category:manifest.category,folders:manifest.folders,icon_url:iconUrl(manifest.repo,repo.default_branch,manifest.icon),source:{type:'release',asset:manifest.asset},trust,downloads,latest:{tag:release.tag_name,asset_url:asset.browser_download_url,sha256,size,trust,findings:report.findings,published_at:release.published_at}});
   }
   const v1 = path.join(outputDir,'v1'); await fs.mkdir(v1,{recursive:true});
   for (const [name,value] of Object.entries({registry:{schema:1,addons},categories:[...new Set(addons.map(a=>a.category))].sort(),'game-versions':['11200','30300']})) {

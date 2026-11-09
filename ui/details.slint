@@ -1,0 +1,49 @@
+import { Theme } from "theme.slint";
+import { AddonRow, AddonArtwork, ActionButton, LinkButton, ScrollPanel } from "components.slint";
+
+export component AddonDetails inherits Rectangle {
+    in property <AddonRow> addon;
+    in property <[string]> folders;
+    in property <string> repo;
+    callback close();
+    callback open-source();
+    width: 600px; height: layout.preferred-height;
+    background: Theme.panel; border-radius: 14px; border-width: 1px; border-color: Theme.line;
+    layout := VerticalLayout {
+        padding: 24px; spacing: 18px;
+        HorizontalLayout {
+            spacing: 16px;
+            AddonArtwork { width: 64px; height: 64px; source: root.addon.icon; initial: root.addon.initial; }
+            VerticalLayout {
+                alignment: center; spacing: 6px; horizontal-stretch: 1;
+                Text { text: root.addon.name; color: Theme.text; font-size: 22px; font-weight: 600; wrap: word-wrap; }
+                Text { text: root.addon.author != "" ? @tr("by ") + root.addon.author : @tr("Author not specified"); color: Theme.text-muted; font-size: 13px; overflow: elide; }
+                Text { text: (root.addon.version != "" ? @tr("Version") + " " + root.addon.version : "") + (root.addon.badge != "" ? "  ·  " + root.addon.badge : ""); color: Theme.accent; font-size: Theme.meta; }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.line; }
+        ScrollPanel {
+            height: min(260px,max(80px,body.preferred-height));
+            body := VerticalLayout {
+                spacing: 12px;
+                Text { text: @tr("Description"); color: Theme.text; font-size: 13px; font-weight: 600; }
+                Text { text: root.addon.description != "" ? root.addon.description : @tr("No description available."); color: Theme.text-muted; font-size: Theme.body; wrap: word-wrap; }
+                if root.addon.warning != "" : Rectangle {
+                    height: warning.preferred-height + 24px; border-radius: 8px; background: root.addon.status-kind == 3 ? #34232D : #30291C;
+                    warning := Text { x: 12px; y: 12px; width: parent.width - 24px; text: root.addon.warning; color: root.addon.status-kind == 3 ? Theme.danger : Theme.warn; font-size: Theme.meta; wrap: word-wrap; }
+                }
+                if root.folders.length > 0 : Text { text: @tr("Addon folders"); color: Theme.text; font-size: 13px; font-weight: 600; }
+                for folder in root.folders : Rectangle {
+                    height: 28px; border-radius: 6px; background: Theme.field;
+                    Text { x: 10px; width: parent.width - 20px; height: parent.height; text: folder; color: Theme.text-muted; font-family: "Consolas"; font-size: Theme.meta; vertical-alignment: center; overflow: elide; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            if root.repo != "" : LinkButton { text: @tr("View on GitHub"); clicked => { root.open-source(); } }
+            Rectangle { horizontal-stretch: 1; }
+            ActionButton { text: @tr("Close"); primary: true; clicked => { root.close(); } }
+        }
+    }
+}

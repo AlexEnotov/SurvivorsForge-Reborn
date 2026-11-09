@@ -250,6 +250,18 @@ impl Client {
         Ok(text)
     }
 
+    /// Artwork is optional: no redirects, short timeout and a strict byte budget.
+    pub fn icon_bytes(&self, url: &str, repo: &str) -> Result<Vec<u8>> {
+        crate::icons::validate_remote(url,repo)?;
+        let agent=ureq::AgentBuilder::new().redirects(0).timeout(Duration::from_secs(8))
+            .user_agent(&format!("{}/{}",crate::APP_NAME,crate::APP_VERSION)).build();
+        let response=Self::call(agent.get(url))?;
+        if response.status()!=200 { return Err(Error::Http(response.status())); }
+        let mut bytes=Vec::new(); response.into_reader().take(crate::icons::MAX_BYTES+1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > crate::icons::MAX_BYTES { return Err(Error::Parse("Icon is too large".into())); }
+        Ok(bytes)
+    }
+
     fn refs(&self, repo: &str) -> Result<Refs> {
         Ok(parse_refs(&self.get_text(&format!("{WEB}/{repo}.git/info/refs?service=git-upload-pack"))?))
     }

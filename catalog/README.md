@@ -14,6 +14,7 @@ name = "My Addon"
 category = "Combat"
 folders = ["MyAddon"]
 asset = "MyAddon-*.zip"
+icon = ""
 ```
 
 Optional fields: `author`, `description`, `verified_tag`, `verified_sha256`.
@@ -65,3 +66,14 @@ returning 304, then build the launcher with
 Acceptance checks still requiring external coordination: approved starter addons
 running in Reborn; catalog discovery from a fresh install; a test addon update
 within an hour; live Cloudflare headers and conditional requests.
+
+## Addon icons
+
+Each manifest may set `icon = "assets/icon.png"`, a path inside that addon’s
+repository on its default branch. Omit the field or use `icon = ""` for no icon.
+Do not use `none`, absolute URLs, parent traversal or Windows backslashes.
+Supported images: PNG, JPEG, WebP, TGA, BMP and ICO; PNG is recommended.
+The generator emits icon_url; it never mirrors image files to Cloudflare.
+The launcher caches bounded images from the same GitHub repository, falls back
+to local IconTexture/common addon artwork, and displays a placeholder if no
+image is available. Missing/broken icons do not prevent installing an addon.

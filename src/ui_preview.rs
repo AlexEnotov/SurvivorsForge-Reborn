@@ -35,7 +35,15 @@ fn capture_ui() {
     ui.set_installed_total(4);
     ui.set_update_count(1);
     ui.set_enabled_total(3); ui.set_disabled_total(1);
+    let mut art=slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(32,32);
+    for (index,pixel) in art.make_mut_slice().iter_mut().enumerate() {
+        let x=index%32; let y=index/32;
+        let bar=(6..11).contains(&x) && (18..26).contains(&y) || (14..19).contains(&x) && (12..26).contains(&y) || (22..27).contains(&x) && (6..26).contains(&y);
+        *pixel=if bar { slint::Rgba8Pixel {r:225,g:242,b:255,a:255} } else { slint::Rgba8Pixel {r:34,g:94,b:160,a:255} };
+    }
+    let sample_icon=slint::Image::from_rgba8(art);
     let row=|id:&str,name:&str,status:&str,kind:i32,action:&str,switch:&str| crate::AddonRow {
+        icon:if id=="a" {sample_icon.clone()} else {slint::Image::default()},
         id:id.into(),name:name.into(),initial:name[..1].into(),author:"Sample author".into(),
         version:"v1.2.0".into(),badge:"GitHub".into(),description:"A sample addon used only in this offline interface preview.".into(),
         status:status.into(),status_kind:kind,action:action.into(),switch_label:switch.into(),disabled:switch=="Enable",can_remove:true,can_open:true,
@@ -59,6 +67,14 @@ fn capture_ui() {
         ui.window().dispatch_event(WindowEvent::PointerReleased{position,button:PointerEventButton::Left});
     };
     click(1100.0,347.0); assert!(toggled.get(),"The visible switch invokes its addon callback");
+    let launches=Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen=launches.clone(); ui.on_launch_game(move |checked| seen.borrow_mut().push(checked));
+    click(100.0,630.0); click(100.0,668.0);
+    assert_eq!(*launches.borrow(),vec![true,false],"Primary runs Reborn checks; secondary launches the game directly");
+    let support=Rc::new(std::cell::Cell::new(false));
+    let seen=support.clone(); ui.on_open_support(move || seen.set(true));
+    click(100.0,743.0);
+    assert!(support.get(),"Support for the Reborn edition has its own destination");
     click(80.0,265.0); assert_eq!(ui.get_page(),2,"Sidebar navigation opens settings");
     let press=|key:slint::SharedString| {
         ui.window().dispatch_event(WindowEvent::KeyPressed{text:key.clone()});
@@ -88,7 +104,9 @@ fn capture_ui() {
     ui.set_page(0); save(&window,"installed-de",980,660);
     let _=slint::select_bundled_translation("en"); ui.set_language_index(0);
     ui.set_page(1); save(&window,"catalog",1180,800);
-    ui.set_details_title("Combat Meter".into()); ui.set_details_text("A local addon description.\n\nThis window shows the full text, including compatibility warnings and folders, without requesting data from a website.".into());
+    ui.set_detail_addon(row("a","Combat Meter","Up to date",1,"","Disable"));
+    ui.set_detail_repo("example/combat-meter".into());
+    ui.set_detail_folders(slint::ModelRc::new(slint::VecModel::from(vec![slint::SharedString::from("CombatMeter")])));
     ui.set_details_open(true); save(&window,"details",980,660); ui.set_details_open(false);
     ui.set_needs_setup(true); ui.set_setup_searching(false);
     save(&window,"setup",980,660);

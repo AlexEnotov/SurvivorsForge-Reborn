@@ -7,6 +7,7 @@ pub mod config;
 pub mod backup;
 pub mod controller;
 pub mod github;
+pub mod icons;
 pub mod game;
 pub mod install;
 pub mod registry;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {parseManifest, matches, allowedUrl, generate} from './generate.mjs';
+import {parseManifest, matches, allowedUrl, generate, iconUrl} from './generate.mjs';
 
 const valid = 'repo = "example/addon"\nname = "Test Addon"\ncategory = "Combat"\nfolders = ["TestAddon"]\nasset = "TestAddon-*.zip"\n';
 
@@ -17,6 +17,17 @@ test('validates manifest paths, types, duplicates and verification pins',()=>{
 test('rejects backend hosts and credentials before fetching',()=>{
   for (const url of ['https://forgeapi.rezondes.net/v1/registry','https://wow.aethus.pl/game.zip','https://github.com.evil.org/a.zip','http://github.com/a.zip','https://token@github.com/a.zip']) assert.throws(()=>allowedUrl(url));
   assert.equal(allowedUrl('https://github.com/example/addon/releases/download/v1/addon.zip').hostname,'github.com');
+});
+
+test('optional icons use a relative repository path, not a URL or parent traversal',()=>{
+  assert.equal(parseManifest(valid).icon,'');
+  assert.equal(parseManifest(valid+'icon = ""').icon,'');
+  const manifest=parseManifest(valid+'icon = "assets/addon logo.png"');
+  assert.equal(iconUrl(manifest.repo,'main',manifest.icon),'https://raw.githubusercontent.com/example/addon/main/assets/addon%20logo.png');
+  assert.equal(iconUrl(manifest.repo,'main',''),null);
+  for (const value of ['../icon.png','/icon.png','https://example.org/icon.png','assets/../icon.png','icon.svg','none']) {
+    assert.throws(()=>parseManifest(valid+'icon = '+JSON.stringify(value)));
+  }
 });
 
 test('empty independent catalog is deterministic and makes no network requests',async()=>{
@@ -51,7 +62,7 @@ test('generates a scanned artifact with stable SHA-256 using the real local scan
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'reborn-catalog-integration-'));
   try {
     const manifests=path.join(temp,'addons'), output=path.join(temp,'public');
-    await fs.mkdir(manifests); await fs.writeFile(path.join(manifests,'test-addon.toml'),valid);
+    await fs.mkdir(manifests); await fs.writeFile(path.join(manifests,'test-addon.toml'),valid+'icon = "assets/icon.png"');
     const zip=fixtureZip('## Interface: 30300\n## Title: Test Addon\n');
     let downloads=7;
     const transport=async(url)=> {
@@ -63,6 +74,7 @@ test('generates a scanned artifact with stable SHA-256 using the real local scan
     await generate(manifests,output,process.env.FORGE_SCAN,transport);
     const first=await fs.readFile(path.join(output,'v1/registry'),'utf8');
     const addon=JSON.parse(first).addons[0];
+    assert.equal(addon.icon_url,'https://raw.githubusercontent.com/example/addon/main/assets/icon.png');
     if (process.env.REBORN_MANAGER_CHECK) {
       const {spawnSync}=await import('node:child_process');
       const check=spawnSync(process.env.REBORN_MANAGER_CHECK,['--check-catalog',path.join(output,'v1/registry')],{encoding:'utf8',windowsHide:true});

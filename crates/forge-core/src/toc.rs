@@ -11,6 +11,7 @@ pub struct Toc {
     pub notes: Option<String>,
     pub author: Option<String>,
     pub dependencies: Vec<String>,
+    pub icon_texture: Option<String>,
 }
 
 impl Toc {
@@ -30,6 +31,7 @@ impl Toc {
                 "title" => title = value,
                 "version" => toc.version = value,
                 "interface" => toc.interface = value,
+                "icontexture" => toc.icon_texture = value,
                 "notes" => toc.notes = value.map(|v| strip_colors(&v)),
                 "author" => toc.author = value.map(|v| strip_colors(&v)),
                 "dependencies" | "requireddeps" | "requireddependencies" => {

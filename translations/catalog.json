@@ -1346,5 +1346,89 @@
   "Choose your game folder to get started.": [
     "Выберите папку игры, чтобы начать.",
     "Wähle zum Start deinen Spielordner."
+  ],
+  "Check & play": [
+    "Проверить и играть",
+    "Prüfen & starten"
+  ],
+  "Play directly": [
+    "Играть напрямую",
+    "Direkt starten"
+  ],
+  "Original: Rezondes": [
+    "Оригинал: Rezondes",
+    "Original: Rezondes"
+  ],
+  "Reborn fork: AlexEnotov": [
+    "Форк Reborn: AlexEnotov",
+    "Reborn-Fork: AlexEnotov"
+  ],
+  "Reborn adaptation by AlexEnotov.": [
+    "Адаптация для Reborn — AlexEnotov.",
+    "Reborn-Anpassung von AlexEnotov."
+  ],
+  "Original source": [
+    "Исходники оригинала",
+    "Original-Quellcode"
+  ],
+  "Fork source": [
+    "Исходники форка",
+    "Fork-Quellcode"
+  ],
+  "Check & play runs Reborn’s update and error checks. Play directly skips these checks.": [
+    "«Проверить и играть» запускает проверки обновлений и ошибок Reborn. «Играть напрямую» пропускает эти проверки.",
+    "„Prüfen & starten“ führt Reborns Update- und Fehlerprüfungen aus. „Direkt starten“ überspringt diese Prüfungen."
+  ],
+  "{} (catalog: cached copy)": [
+    "{} (каталог: сохранённая копия)",
+    "{} (Katalog: gespeicherte Kopie)"
+  ],
+  "{} (catalog not connected)": [
+    "{} (каталог не подключён)",
+    "{} (Katalog nicht verbunden)"
+  ],
+  "{} (catalog: built-in copy)": [
+    "{} (каталог: встроенная копия)",
+    "{} (Katalog: integrierte Kopie)"
+  ],
+  "Reborn update and error checks started": [
+    "Запущены проверки обновлений и ошибок Reborn",
+    "Reborn prüft Updates und Fehler"
+  ],
+  "Reborn version by AlexEnotov": [
+    "Версия Reborn: AlexEnotov",
+    "Reborn-Version von AlexEnotov"
+  ],
+  "Report a problem": [
+    "Сообщить об ошибке",
+    "Problem melden"
+  ],
+  "Adapted and maintained by AlexEnotov.": [
+    "Адаптация и поддержка — AlexEnotov.",
+    "Angepasst und betreut von AlexEnotov."
+  ],
+  "Report issues with this Reborn version to AlexEnotov.": [
+    "С ошибками этой версии для Reborn обращайтесь к AlexEnotov.",
+    "Melde Probleme mit dieser Reborn-Version an AlexEnotov."
+  ],
+  "Source code": [
+    "Исходный код",
+    "Quellcode"
+  ],
+  "Author not specified": [
+    "Автор не указан",
+    "Autor nicht angegeben"
+  ],
+  "No description available.": [
+    "Описание не указано.",
+    "Keine Beschreibung vorhanden."
+  ],
+  "Addon folders": [
+    "Папки аддона",
+    "Addon-Ordner"
+  ],
+  "View on GitHub": [
+    "Открыть на GitHub",
+    "Auf GitHub ansehen"
   ]
 }

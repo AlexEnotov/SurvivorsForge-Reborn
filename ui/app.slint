@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { AddonDetails } from "details.slint";
 import { NavItem, FilterChip, SettingCard, EmptyState } from "workspace.slint";
 import {
     AddonRow, ActionButton, TabButton, Field, ScrollPanel, AddonRowView,
@@ -78,7 +79,7 @@ component SetupView inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Reborn Addon Manager";
-    icon: @image-url("../assets/icon.png");
+    icon: @image-url("../assets/branding/reborn-ui.png");
     no-frame: true;
     min-width: 980px;
     min-height: 660px;
@@ -129,6 +130,8 @@ export component AppWindow inherits Window {
     callback install-zip();
     callback add-repo();
     callback open-source();
+    callback open-support();
+    callback open-upstream-source();
     callback restore-backup();
     callback open-backups();
     callback open-addons();
@@ -141,8 +144,9 @@ export component AppWindow inherits Window {
     callback copy-status();
     callback row-details(string);
     in-out property <bool> details-open;
-    in property <string> details-title;
-    in property <string> details-text;
+    in property <AddonRow> detail-addon;
+    in property <[string]> detail-folders;
+    in property <string> detail-repo;
     property <bool> status-details;
     in-out property <bool> status-copied;
     changed status-text => { root.status-copied = false; }
@@ -212,7 +216,7 @@ export component AppWindow inherits Window {
             reject
         }
     Rectangle {
-        background: Theme.bg-glow;
+        background: Theme.bg;
     }
 
     if root.needs-setup : SetupView {
@@ -239,15 +243,12 @@ export component AppWindow inherits Window {
         y: root.title-height; width: parent.width; height: parent.height - root.title-height;
         spacing: 0px;
         Rectangle {
-            width: 216px; background: #101722;
+            width: 216px; background: Theme.sidebar;
             VerticalLayout {
                 padding: 18px; spacing: 8px;
                 HorizontalLayout {
                     padding-top: 14px; padding-bottom: 24px; spacing: 12px;
-                    Rectangle {
-                        width: 38px; height: 38px; border-radius: 11px; background: Theme.primary;
-                        Text { text: "R"; color: #FFFFFF; font-size: 23px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-                    }
+                    Image { width: 44px; height: 44px; source: @image-url("../assets/branding/reborn-ui.png"); image-fit: contain; }
                     VerticalLayout {
                         spacing: 2px;
                         Text { text: "REBORN"; color: Theme.text; font-size: 18px; font-weight: 700; }
@@ -259,16 +260,20 @@ export component AppWindow inherits Window {
                 NavItem { text: @tr("Settings"); active: root.page == 2; clicked => { root.page = 2; } }
                 Rectangle { vertical-stretch: 1; }
                 Rectangle {
-                    height: 174px; border-radius: 12px; background: #182335; border-width: 1px; border-color: Theme.line;
+                    height: 148px; border-radius: 12px; background: #182335; border-width: 1px; border-color: Theme.line;
                     VerticalLayout {
-                        padding: 12px; spacing: 10px;
-                        Text { text: "AZEROTH SURVIVORS"; color: Theme.text-muted; font-size: 10px; letter-spacing: 0.5px; }
-                        Text { text: "Reborn"; color: Theme.text; font-size: 19px; font-weight: 600; }
-                        ActionButton { text: @tr("Play game"); enabled: !root.operations-running; primary: true; clicked => { root.launch-game(false); } }
-                        ActionButton { text: @tr("Open launcher"); enabled: !root.operations-running; clicked => { root.launch-game(true); } }
+                        padding: 12px; spacing: 8px;
+                        Text { height: 12px; text: "AZEROTH SURVIVORS"; color: Theme.text-muted; font-size: 10px; letter-spacing: 0.5px; }
+                        Text { height: 22px; text: "Reborn"; color: Theme.text; font-size: 19px; font-weight: 600; }
+                        ActionButton { text: @tr("Check & play"); enabled: !root.operations-running; primary: true; clicked => { root.launch-game(true); } }
+                        ActionButton { text: @tr("Play directly"); enabled: !root.operations-running; clicked => { root.launch-game(false); } }
                     }
                 }
-                HorizontalLayout { padding-top: 10px; Text { text: "v" + root.app-version; color: Theme.text-disabled; font-size: 11px; } Rectangle { horizontal-stretch: 1; } if root.game-mode : LinkButton { text: @tr("Quit"); clicked => { root.close-window(); } } }
+                VerticalLayout { spacing: 0px;
+                    Text { text: @tr("Reborn version by AlexEnotov"); color: Theme.text-muted; font-size: 10px; wrap: word-wrap; }
+                    HorizontalLayout { alignment: start; LinkButton { text: @tr("Report a problem"); clicked => { root.open-support(); } } }
+                }
+                HorizontalLayout { padding-top: 6px; Text { text: "v" + root.app-version; color: Theme.text-disabled; font-size: 11px; } Rectangle { horizontal-stretch: 1; } if root.game-mode : LinkButton { text: @tr("Quit"); clicked => { root.close-window(); } } }
             }
         }
         Rectangle { width: 1px; background: Theme.line; }
@@ -334,6 +339,7 @@ export component AppWindow inherits Window {
                     title: @tr("Game installation"); description: @tr("Choose the Interface/AddOns folder inside your Reborn installation.");
                     HorizontalLayout { spacing: 10px; Field { text <=> root.settings-path; accepted => { root.settings-save(); } } if root.file-dialog : ActionButton { text: @tr("Browse..."); clicked => { root.settings-browse(); } } }
                     HorizontalLayout { spacing: 10px; LinkButton { text: @tr("Open AddOns folder"); clicked => { root.open-addons(); } } Rectangle { horizontal-stretch: 1; } ActionButton { text: @tr("Save folder"); primary: true; enabled: root.settings-path != root.addons-dir; clicked => { root.settings-save(); } } }
+                    Text { text: @tr("Check & play runs Reborn’s update and error checks. Play directly skips these checks."); color: Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; }
                     if root.settings-message != "" : Text { text: root.settings-message; color: root.settings-message-error ? Theme.danger : Theme.ok; font-size: Theme.meta; wrap: word-wrap; }
                 }
                 SettingCard {
@@ -353,8 +359,15 @@ export component AppWindow inherits Window {
                 }
                 SettingCard {
                     title: @tr("About"); description: "Reborn Addon Manager · v" + root.app-version;
+                    Text { text: @tr("Adapted and maintained by AlexEnotov."); color: Theme.text; font-size: 13px; wrap: word-wrap; }
+                    Text { text: @tr("Report issues with this Reborn version to AlexEnotov."); color: Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; }
+                    HorizontalLayout { alignment: start; spacing: 12px;
+                        LinkButton { text: @tr("Report a problem"); clicked => { root.open-support(); } }
+                        LinkButton { text: @tr("Source code"); clicked => { root.open-source(); } }
+                    }
+                    Rectangle { height: 1px; background: Theme.line; }
                     Text { text: @tr("Based on SurvivorsForge by Rezondes.") + " AGPL-3.0-or-later"; color: Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; }
-                    HorizontalLayout { alignment: start; ActionButton { text: @tr("Source and license"); clicked => { root.open-source(); } } }
+                    HorizontalLayout { alignment: start; LinkButton { text: @tr("Original source"); clicked => { root.open-upstream-source(); } } }
                 }
             }
             if root.page == 0 && root.switches-available : Text { text: @tr("Switches apply to all existing characters. Close the game before making changes."); color: Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; }
@@ -369,11 +382,16 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.details-open || root.status-details : Overlay {
+    if root.details-open : Overlay {
+        y: root.title-height; width: parent.width; height: parent.height - root.title-height;
+        AddonDetails { addon: root.detail-addon; folders: root.detail-folders; repo: root.detail-repo; close => { root.details-open = false; } open-source => { root.row-open(root.detail-addon.id); } }
+    }
+
+    if root.status-details : Overlay {
         y: root.title-height; width: parent.width; height: parent.height - root.title-height;
         DialogCard {
-            title: root.status-details ? @tr("Activity details") : root.details-title;
-            ScrollPanel { height: 280px; Text { text: root.status-details ? root.status-text : root.details-text; color: Theme.text; font-size: Theme.body; wrap: word-wrap; } }
+            title: @tr("Activity details");
+            ScrollPanel { height: 280px; Text { text: root.status-text; color: Theme.text; font-size: Theme.body; wrap: word-wrap; } }
             HorizontalLayout { alignment: end; spacing: 10px;
                 if root.status-details : ActionButton { text: root.status-copied ? @tr("Copied") : @tr("Copy"); clicked => { root.copy-status(); } }
                 ActionButton { text: @tr("Close"); primary: true; clicked => { root.details-open = false; root.status-details = false; } }
@@ -457,7 +475,8 @@ export component AppWindow inherits Window {
         x: 0;
         y: 0;
         width: parent.width;
-        title: root.title;
+        title: "";
+        sidebar-width: root.needs-setup ? 0px : 216px;
         maximized: root.maximized;
         start-drag => { root.start-drag(); }
         minimize => { root.minimize(); }

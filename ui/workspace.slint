@@ -5,14 +5,14 @@ export component NavItem inherits Rectangle {
     in property <string> count;
     in property <bool> active;
     callback clicked();
-    height: 44px;
+    height: Theme.touch ? 44px : 40px;
     border-radius: 8px;
     background: root.active ? #213756 : hover.has-hover ? #192333 : transparent;
     accessible-role: button;
     accessible-label: root.text;
     border-width: nav-focus.has-focus ? 1px : 0px; border-color: Theme.outline-active;
     accessible-action-default => { root.clicked(); }
-    Rectangle { x: 0; y: 12px; width: 3px; height: 20px; border-radius: 2px; background: root.active ? Theme.accent : transparent; }
+    Rectangle { x: 0; y: (parent.height - 20px) / 2; width: 3px; height: 20px; border-radius: 2px; background: root.active ? Theme.accent : transparent; }
     HorizontalLayout {
         padding-left: 16px; padding-right: 12px; spacing: 8px;
         Text { text: root.text; color: root.active ? Theme.text : Theme.text-muted; font-size: Theme.body; font-weight: root.active ? 600 : 400; vertical-alignment: center; horizontal-stretch: 1; }
@@ -41,7 +41,7 @@ export component SettingCard inherits Rectangle {
     height: layout.preferred-height;
     border-radius: 12px; border-width: 1px; border-color: Theme.line; background: Theme.panel;
     layout := VerticalLayout {
-        padding: 22px; spacing: 14px;
+        padding: 18px; spacing: 10px;
         Text { text: root.title; font-size: 17px; font-weight: 600; color: Theme.text; }
         if root.description != "" : Text { text: root.description; font-size: Theme.meta; color: Theme.text-muted; wrap: word-wrap; }
         @children

@@ -1,0 +1,26 @@
+name: Reborn manager problem
+description: Report a problem with AlexEnotov's Reborn Addon Manager.
+body:
+  - type: markdown
+    attributes:
+      value: This tracker is for the Reborn version maintained by AlexEnotov. Original SurvivorsForge source credits are separate from support for this version.
+  - type: input
+    id: version
+    attributes:
+      label: Manager version
+      placeholder: e.g. 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the error text or a screenshot if available.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true

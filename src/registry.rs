@@ -42,6 +42,8 @@ pub struct VerifiedAddon {
     pub source: SourceSpec,
     #[serde(default)]
     pub latest: Option<CatalogRelease>,
+    #[serde(default)]
+    pub icon_url: Option<String>,
 }
 
 /// Exact artifact reviewed by the independent Reborn catalog generator.
@@ -77,6 +79,9 @@ impl Registry {
         let mut folders = std::collections::HashSet::new();
         for addon in &registry.addons {
             crate::github::normalize_repo(&addon.repo)?;
+            if let Some(icon) = addon.icon_url.as_ref().filter(|url| !url.trim().is_empty()) {
+                crate::icons::validate_remote(icon, &addon.repo)?;
+            }
             if let Some(release) = &addon.latest {
                 crate::network_policy::validate_download(&release.asset_url)?;
                 if release.sha256.len() != 64 || !release.sha256.bytes().all(|c| c.is_ascii_hexdigit())

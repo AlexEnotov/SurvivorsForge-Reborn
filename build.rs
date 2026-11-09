@@ -21,7 +21,7 @@ fn main() {
     // Icon and version info of the .exe (Explorer, taskbar pin, Alt+Tab before the window shows).
     #[cfg(windows)]
     winresource::WindowsResource::new()
-        .set_icon("assets/icon.ico")
+        .set_icon("assets/branding/reborn.ico")
         .set("FileDescription", "Reborn Addon Manager")
         .set("ProductName", "Reborn Addon Manager")
         .compile()
