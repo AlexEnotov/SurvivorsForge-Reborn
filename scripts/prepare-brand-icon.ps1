@@ -1,4 +1,7 @@
-param([string]$Source = (Join-Path $PSScriptRoot '../assets/branding/reborn.png'))
+param(
+    [string]$Source = (Join-Path $PSScriptRoot '../assets/branding/reborn.png'),
+    [string]$Name = 'reborn'
+)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 $sourceImage = [System.Drawing.Bitmap]::new((Resolve-Path -LiteralPath $Source).Path)
@@ -15,10 +18,10 @@ try {
             $graphics.DrawImage($sourceImage,0,0,$size,$size)
             $frame.Save($stream,[System.Drawing.Imaging.ImageFormat]::Png)
             $frames.Add($stream.ToArray())
-            if ($size -eq 256) { [System.IO.File]::WriteAllBytes((Join-Path $PSScriptRoot '../assets/branding/reborn-ui.png'),$stream.ToArray()) }
+            if ($size -eq 256) { [System.IO.File]::WriteAllBytes((Join-Path $PSScriptRoot "../assets/branding/$Name-ui.png"),$stream.ToArray()) }
         } finally { $stream.Dispose(); $graphics.Dispose(); $frame.Dispose() }
     }
-    $iconStream = [System.IO.File]::Create((Join-Path $PSScriptRoot '../assets/branding/reborn.ico'))
+    $iconStream = [System.IO.File]::Create((Join-Path $PSScriptRoot "../assets/branding/$Name.ico"))
     $writer = [System.IO.BinaryWriter]::new($iconStream)
     try {
         $writer.Write([uint16]0); $writer.Write([uint16]1); $writer.Write([uint16]$sizes.Count)

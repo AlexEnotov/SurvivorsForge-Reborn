@@ -21,8 +21,9 @@ Updated 2026-11-09. Native Slint interface; dark blue theme, Segoe UI.
 - Support for this Reborn version belongs to AlexEnotov. The persistent Report a
   problem link opens this repository's Issues. About separates this support and
   source information from the original SurvivorsForge attribution to Rezondes.
-- The supplied phoenix/book emblem is used in the sidebar, window and Windows
-  executable. In the sidebar it is centred above the name at 96px, or 72px in a
+- A simplified blue/gold R-and-wings emblem is used in the sidebar, window and
+  Windows executable. The earlier supplied phoenix/book emblem is retained in
+  assets/branding. The active mark is centred above the name at 96px, or 72px in a
   compact window. The window caption does not repeat the sidebar's app name.
 
 ## Shared components and tokens
