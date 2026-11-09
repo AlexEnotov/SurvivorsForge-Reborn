@@ -5,7 +5,8 @@ An independent addon manager for Azeroth Survivors Reborn, based on
 
 The new main branch starts from upstream v0.3.2. Selected local improvements from
 v0.8.0 are being integrated for Reborn. This is an independent version maintained
-in this fork; changes are not automatically submitted to the original project.
+in this fork. We do not plan to submit its changes back to upstream. The original
+repository is consulted manually for selected improvements and fixes.
 
 **Preview build.** A production catalog address and approved starter
 addons are still pending coordination with the Reborn team.

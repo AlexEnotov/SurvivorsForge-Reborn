@@ -6,7 +6,8 @@ Selected local modules are taken from upstream v0.8.0, commit
 `7f769e0297c31d76f79f9cf490f8e2865e422a2d`.
 Modified for Reborn on 2026-11-09.
 This is an independent Reborn version. Its development happens in this fork;
-changes are not automatically synchronized or submitted upstream.
+changes stay in this fork and we do not plan to submit them upstream. Original
+source is consulted manually when selecting improvements and fixes.
 
 Preserve the AGPL-3.0-or-later license and original copyright notices.
 Original project: https://github.com/Rezondes/SurvivorsForge
