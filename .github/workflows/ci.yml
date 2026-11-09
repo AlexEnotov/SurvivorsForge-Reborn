@@ -1,5 +1,6 @@
 name: Reborn checks
 on:
+  workflow_dispatch:
   push:
     branches: [main, rebuild-main]
   pull_request:
