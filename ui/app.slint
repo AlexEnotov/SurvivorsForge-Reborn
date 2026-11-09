@@ -79,7 +79,7 @@ component SetupView inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "Reborn Addon Manager";
-    icon: @image-url("../assets/branding/reborn-v2-ui.png");
+    icon: @image-url("../assets/branding/reborn-v3-ui.png");
     no-frame: true;
     min-width: 980px;
     min-height: 660px;
@@ -246,15 +246,14 @@ export component AppWindow inherits Window {
             width: 216px; background: Theme.sidebar;
             VerticalLayout {
                 padding: 18px; padding-top: 8px; spacing: 8px;
-                VerticalLayout {
-                    height: root.height < 720px ? 124px : 156px;
-                    padding-bottom: 8px; spacing: 4px;
-                    HorizontalLayout {
-                        alignment: center;
-                        Image { width: root.height < 720px ? 72px : 96px; height: self.width; source: @image-url("../assets/branding/reborn-v2-ui.png"); image-fit: contain; }
+                HorizontalLayout {
+                    height: 88px; padding-bottom: 16px; spacing: 10px;
+                    Image { width: 72px; height: 72px; source: @image-url("../assets/branding/reborn-v3-ui.png"); image-fit: contain; }
+                    VerticalLayout {
+                        alignment: center; spacing: 3px;
+                        Text { height: 22px; text: "REBORN"; color: Theme.text; font-size: 18px; font-weight: 700; }
+                        Text { height: 14px; text: "ADDON MANAGER"; color: Theme.text-muted; font-size: 9px; letter-spacing: 0.5px; }
                     }
-                    Text { height: 22px; text: "REBORN"; horizontal-alignment: center; color: Theme.text; font-size: 18px; font-weight: 700; }
-                    Text { height: 14px; text: "ADDON MANAGER"; horizontal-alignment: center; color: Theme.text-muted; font-size: 10px; letter-spacing: 1px; }
                 }
                 NavItem { text: @tr("Installed"); count: root.installed-total; active: root.page == 0; clicked => { root.page = 0; } }
                 NavItem { text: @tr("Catalog"); active: root.page == 1; clicked => { root.page = 1; } }

@@ -75,7 +75,7 @@ fn capture_ui() {
     let seen=support.clone(); ui.on_open_support(move || seen.set(true));
     click(100.0,743.0);
     assert!(support.get(),"Support for the Reborn edition has its own destination");
-    click(80.0,327.0); assert_eq!(ui.get_page(),2,"Sidebar navigation opens settings");
+    click(80.0,259.0); assert_eq!(ui.get_page(),2,"Sidebar navigation opens settings");
     let press=|key:slint::SharedString| {
         ui.window().dispatch_event(WindowEvent::KeyPressed{text:key.clone()});
         ui.window().dispatch_event(WindowEvent::KeyReleased{text:key});
