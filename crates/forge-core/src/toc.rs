@@ -47,7 +47,13 @@ impl Toc {
     }
 
     pub fn is_out_of_date(&self) -> bool {
-        self.interface.as_deref().is_some_and(|i| i.trim() != INTERFACE)
+        self.is_out_of_date_for(INTERFACE)
+    }
+
+    /// A TOC may name several supported client interfaces, separated by commas or spaces.
+    pub fn is_out_of_date_for(&self, expected: &str) -> bool {
+        self.interface.as_deref().is_some_and(|i|
+            !i.split(|c: char| c == ',' || c.is_whitespace()).any(|v| v == expected))
     }
 }
 
@@ -83,6 +89,18 @@ pub fn strip_colors(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compatibility_uses_the_selected_client_and_supports_multiple_interfaces() {
+        let reborn = Toc::parse("## Interface: 30300", "Reborn");
+        assert!(!reborn.is_out_of_date_for("30300"));
+        assert!(reborn.is_out_of_date());
+        let legacy = Toc::parse("## Interface: 11200", "Legacy");
+        assert!(legacy.is_out_of_date_for("30300"));
+        let shared = Toc::parse("## Interface: 11200, 30300", "Shared");
+        assert!(!shared.is_out_of_date_for("30300"));
+        assert!(!shared.is_out_of_date());
+    }
 
     #[test]
     fn parses_fields_case_insensitive_with_bom_and_crlf() {

@@ -93,6 +93,17 @@ pub fn installed_rows(
     registry: &Registry,
     statuses: &HashMap<String, UpdateStatus>,
 ) -> Vec<Row> {
+    installed_rows_for_interface(state, reconciled, scan, registry, statuses, crate::toc::INTERFACE)
+}
+
+pub fn installed_rows_for_interface(
+    state: &State,
+    reconciled: &Reconciled,
+    scan: &[InstalledAddon],
+    registry: &Registry,
+    statuses: &HashMap<String, UpdateStatus>,
+    interface: &str,
+) -> Vec<Row> {
     let mut rows: Vec<Row> = state
         .entries
         .iter()
@@ -145,7 +156,7 @@ pub fn installed_rows(
                 state,
                 description,
                 repo,
-                out_of_date: toc.is_some_and(|t| t.is_out_of_date()),
+                out_of_date: toc.is_some_and(|t| t.is_out_of_date_for(interface)),
                 folders: entry.folders.clone(),
             }
         })
@@ -159,7 +170,7 @@ pub fn installed_rows(
         state: RowState::Unmanaged,
         description: addon.toc.notes.clone().unwrap_or_default(),
         repo: None,
-        out_of_date: addon.toc.is_out_of_date(),
+        out_of_date: addon.toc.is_out_of_date_for(interface),
         folders: vec![addon.folder.clone()],
     }));
     rows.sort_by_key(|r| r.name.to_lowercase());

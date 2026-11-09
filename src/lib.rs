@@ -1,4 +1,5 @@
 pub mod account;
+pub mod addon_enable;
 pub mod config;
 pub mod controller;
 pub mod deep_link;
@@ -7,6 +8,7 @@ pub mod gamepad;
 pub mod game_update;
 pub mod github;
 pub mod install;
+pub mod i18n;
 pub mod local_scan;
 pub mod login;
 pub mod pictures;
@@ -29,6 +31,8 @@ pub const APP_NAME: &str = "SurvivorsForge";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// GitHub repo of SurvivorsForge itself: hosts the releases for self-update.
 pub const APP_REPO: &str = "Rezondes/SurvivorsForge";
+/// A customized build must not replace itself with the upstream executable.
+pub const UPSTREAM_SELF_UPDATE: bool = false;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {

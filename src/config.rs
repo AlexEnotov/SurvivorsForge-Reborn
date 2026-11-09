@@ -7,6 +7,9 @@ const FILE: &str = "config.json";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     pub addons_dir: PathBuf,
+    /// Explicit application language; never inferred from the operating system.
+    #[serde(default = "default_language")]
+    pub language: String,
     /// The game version the user plays, for compatibility warnings; chosen in the settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game_version: Option<String>,
@@ -43,6 +46,8 @@ fn yes() -> bool {
     true
 }
 
+fn default_language() -> String { "en".into() }
+
 fn new_install_id() -> Option<String> {
     Some(crate::telemetry::new_install_id())
 }
@@ -51,6 +56,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             addons_dir: PathBuf::new(),
+            language: default_language(),
             game_version: None,
             api_url: None,
             web_url: None,
@@ -230,7 +236,7 @@ pub fn expand_home(input: &str, home: Option<&Path>) -> PathBuf {
     PathBuf::from(input)
 }
 
-/// Button label for a found AddOns folder: the game folder above `benilla-config/AddOns`,
+/// Button label for a found AddOns folder: the game folder above `Interface/AddOns` or `benilla-config/AddOns`,
 /// with the home folder shortened to `~` on Linux.
 pub fn suggestion_label(addons: &Path, home: Option<&Path>) -> String {
     let game = addons.parent().and_then(Path::parent).unwrap_or(addons);
@@ -243,7 +249,7 @@ pub fn suggestion_label(addons: &Path, home: Option<&Path>) -> String {
 #[derive(Debug, PartialEq)]
 pub enum DirWarning {
     NotNamedAddOns,
-    /// An AddOns folder, but not in the game's `benilla-config`: maybe another game's.
+    /// An AddOns folder outside the supported Interface or benilla-config layouts.
     NoGame,
 }
 
@@ -251,7 +257,7 @@ impl fmt::Display for DirWarning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             DirWarning::NotNamedAddOns => "The folder is not named \"AddOns\". Is this really the game's AddOns folder?",
-            DirWarning::NoGame => "No Azeroth Survivors game found next to this folder. The AddOns folder is usually <game>/benilla-config/AddOns.",
+            DirWarning::NoGame => "No Azeroth Survivors game found next to this folder. For Reborn use <game>/Interface/AddOns; legacy clients use <game>/benilla-config/AddOns.",
         })
     }
 }
@@ -275,7 +281,7 @@ pub fn search_roots() -> Vec<PathBuf> {
     roots.into_iter().filter(|p| p.is_dir()).collect()
 }
 
-/// Folders that look like the game's AddOns folder (`<game>/benilla-config/AddOns`), found by a
+/// Supported `<game>/Interface/AddOns` and `<game>/benilla-config/AddOns` folders, found by a
 /// short walk below each root. Hidden folders and symlinks are skipped, and each root has a budget
 /// of directory entries, so a huge drive can't stall the setup.
 pub fn find_addons_dirs(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
@@ -285,9 +291,11 @@ pub fn find_addons_dirs(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
         let mut budget = BUDGET_PER_ROOT;
         let mut stack = vec![(root.clone(), 0usize)];
         while let Some((dir, depth)) = stack.pop() {
-            let candidate = dir.join("benilla-config").join("AddOns");
-            if candidate.is_dir() && !found.contains(&candidate) {
-                found.push(candidate);
+            for layout in ["Interface", "benilla-config"] {
+                let candidate = dir.join(layout).join("AddOns");
+                if candidate.is_dir() && !found.contains(&candidate) {
+                    found.push(candidate);
+                }
             }
             if depth >= max_depth {
                 continue;
@@ -309,11 +317,15 @@ pub fn find_addons_dirs(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
     found
 }
 
-/// The game's executable next to `<game>/benilla-config/AddOns`: `AzerothSurvivors.exe` on
-/// Windows and macOS, or a native build whose name starts with `AzerothSurvivors` on Linux.
+/// Resolves executables from the game root two levels above AddOns. Reborn prefers its
+/// separate launcher, legacy clients use AzerothSurvivors.exe, Linux uses a native build.
 pub fn game_executable(addons_dir: &Path, windows_build: bool) -> Option<PathBuf> {
     let game = addons_dir.parent()?.parent()?;
     if windows_build {
+        if uses_external_game_launcher(addons_dir) {
+            return ["AzerothSurvivorsLauncher.exe", "AzerothSurvivorsGame.exe"]
+                .into_iter().map(|name| game.join(name)).find(|p| p.is_file());
+        }
         return Some(game.join(crate::game_update::GAME_EXE)).filter(|p| p.is_file());
     }
     // ponytail: first match by name; pin the exact name once the Linux build's file is known
@@ -327,6 +339,24 @@ pub fn game_executable(addons_dir: &Path, windows_build: bool) -> Option<PathBuf
         .collect();
     native.sort();
     native.into_iter().next()
+}
+
+/// The Reborn client keeps addons in Interface/AddOns and updates through its own launcher.
+pub fn uses_external_game_launcher(addons_dir: &Path) -> bool {
+    addons_dir.parent().and_then(Path::file_name)
+        .is_some_and(|n| n.eq_ignore_ascii_case("Interface"))
+}
+
+pub fn interface_version(addons_dir: &Path) -> &'static str {
+    if uses_external_game_launcher(addons_dir) { "30300" } else { crate::toc::INTERFACE }
+}
+
+/// Explicit launch targets for the two Reborn buttons; neither silently launches the other.
+pub fn reborn_executable(addons_dir: &Path, direct: bool) -> Option<PathBuf> {
+    let game = addons_dir.parent()?.parent()?;
+    uses_external_game_launcher(addons_dir)
+        .then(|| game.join(if direct { "AzerothSurvivorsGame.exe" } else { "AzerothSurvivorsLauncher.exe" }))
+        .filter(|p| p.is_file())
 }
 
 /// Steam Deck Game Mode (and any gamescope session): the app runs fullscreen there.
@@ -350,7 +380,8 @@ pub fn validate_addons_dir(path: &Path) -> Result<Option<DirWarning>, DirError> 
     if !named_addons {
         return Ok(Some(DirWarning::NotNamedAddOns));
     }
-    let in_game = path.parent().and_then(Path::file_name).is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("benilla-config"));
+    let in_game = uses_external_game_launcher(path)
+        || path.parent().and_then(Path::file_name).is_some_and(|n| n.eq_ignore_ascii_case("benilla-config"));
     Ok((!in_game).then_some(DirWarning::NoGame))
 }
 
@@ -359,9 +390,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn language_defaults_to_english_and_the_selection_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config::default();
+        assert_eq!(config.language, "en");
+        config.language = "de".into();
+        config.save(dir.path()).unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().language, "de");
+        std::fs::write(dir.path().join("config.json"), r#"{"addons_dir":"Example/Interface/AddOns"}"#).unwrap();
+        assert_eq!(Config::load(dir.path()).unwrap().language, "en");
+    }
+
+    #[test]
+    fn reborn_uses_relative_layout_and_prefers_its_launcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path().join("Any game folder");
+        let addons = game.join("Interface/AddOns");
+        std::fs::create_dir_all(&addons).unwrap();
+        assert_eq!(validate_addons_dir(&addons), Ok(None));
+        assert_eq!(interface_version(&addons), "30300");
+        assert_eq!(game_executable(&addons, true), None);
+        let exe = game.join("AzerothSurvivorsGame.exe");
+        let launcher = game.join("AzerothSurvivorsLauncher.exe");
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(game_executable(&addons, true), Some(exe));
+        assert_eq!(reborn_executable(&addons, false), None);
+        assert_eq!(reborn_executable(&addons, true), Some(game.join("AzerothSurvivorsGame.exe")));
+        std::fs::write(&launcher, b"").unwrap();
+        assert_eq!(game_executable(&addons, true), Some(launcher));
+        assert_eq!(reborn_executable(&addons, false), Some(game.join("AzerothSurvivorsLauncher.exe")));
+        assert_eq!(reborn_executable(&addons, true), Some(game.join("AzerothSurvivorsGame.exe")));
+        assert_eq!(find_addons_dirs(&[dir.path().to_path_buf()], 3), [addons]);
+        assert_eq!(interface_version(Path::new("Game/benilla-config/AddOns")), "11200");
+    }
+
+    #[test]
     fn an_addons_folder_outside_the_game_is_questioned() {
         let dir = tempfile::tempdir().unwrap();
-        let elsewhere = dir.path().join("Interface").join("AddOns");
+        let elsewhere = dir.path().join("OtherGame").join("AddOns");
         let game = dir.path().join("benilla-config").join("AddOns");
         std::fs::create_dir_all(&elsewhere).unwrap();
         std::fs::create_dir_all(&game).unwrap();

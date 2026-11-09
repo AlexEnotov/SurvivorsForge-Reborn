@@ -1,4 +1,6 @@
 /target
+/.qa
+/dist
 
 # Secrets and local runtime data of the platform (never commit these)
 .env

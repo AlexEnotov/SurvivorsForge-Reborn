@@ -19,7 +19,7 @@ export component CommentsView inherits VerticalLayout {
     in property <bool> links-enabled: true;
     // A tab of the detail view: its header names the addon, so no back link and title here.
     in property <bool> embedded;
-    // Logged in on the platform: "Write a comment" shows instead of "Log in to write".
+    // Logged in on the platform: @tr("Write a comment") shows instead of @tr("Log in to write").
     in property <bool> logged-in;
     callback back();
     // Opens the comments on the website (to edit or delete one's own).
@@ -36,7 +36,7 @@ export component CommentsView inherits VerticalLayout {
     if !root.embedded : HorizontalLayout {
         alignment: start;
         LinkButton {
-            text: "< Back to " + root.name;
+            text: @tr("< Back to ") + root.name;
             clicked => { root.back(); }
         }
     }
@@ -47,13 +47,13 @@ export component CommentsView inherits VerticalLayout {
             alignment: center;
             horizontal-stretch: 1;
             if !root.embedded : Text {
-                text: "Comments";
+                text: @tr("Comments");
                 font-size: 26px;
                 color: Theme.gold-heading;
             }
             // Logged in nothing to explain: editing is linked at one's own comments.
             if !root.logged-in : Text {
-                text: root.links-enabled ? "Log in with GitHub to write and reply." : "Log in in Desktop Mode to write and reply.";
+                text: root.links-enabled ? @tr("Log in with GitHub to write and reply.") : @tr("Log in in Desktop Mode to write and reply.");
                 font-size: Theme.meta;
                 color: Theme.text-muted;
                 wrap: word-wrap;
@@ -62,12 +62,12 @@ export component CommentsView inherits VerticalLayout {
         VerticalLayout {
             alignment: center;
             if !root.off && !root.logged-in : ActionButton {
-                text: "Log in to write";
+                text: @tr("Log in to write");
                 enabled: root.links-enabled;
                 clicked => { root.login(); }
             }
             if !root.off && root.logged-in : ActionButton {
-                text: "Write a comment";
+                text: @tr("Write a comment");
                 primary: true;
                 clicked => { root.compose(); }
             }
@@ -78,7 +78,7 @@ export component CommentsView inherits VerticalLayout {
         vertical-stretch: 1;
         spacing: 12px;
         if root.off : Text {
-            text: "The creator has not turned on comments.";
+            text: @tr("The creator has not turned on comments.");
             font-size: Theme.body;
             color: Theme.text-muted;
             wrap: word-wrap;
@@ -86,7 +86,7 @@ export component CommentsView inherits VerticalLayout {
         if root.failed : HorizontalLayout {
             spacing: 12px;
             Text {
-                text: root.rows.length > 0 ? "Older comments could not be loaded." : "Comments could not be loaded. Check the connection.";
+                text: root.rows.length > 0 ? @tr("Older comments could not be loaded.") : @tr("Comments could not be loaded. Check the connection.");
                 font-size: Theme.body;
                 color: Theme.danger;
                 wrap: word-wrap;
@@ -94,12 +94,12 @@ export component CommentsView inherits VerticalLayout {
                 horizontal-stretch: 1;
             }
             ActionButton {
-                text: "Try again";
+                text: @tr("Try again");
                 clicked => { root.retry(); }
             }
         }
         if !root.off && !root.failed && root.waiting == 0 && root.rows.length == 0 && !root.loading-more : Text {
-            text: "No comments yet.";
+            text: @tr("No comments yet.");
             font-size: Theme.body;
             color: Theme.text-muted;
         }
@@ -114,7 +114,7 @@ export component CommentsView inherits VerticalLayout {
                     padding: 12px;
                     spacing: 8px;
                     if row.deleted : Text {
-                        text: "Deleted comment.";
+                        text: @tr("Deleted comment.");
                         font-size: Theme.body;
                         color: Theme.text-muted;
                     }
@@ -127,13 +127,13 @@ export component CommentsView inherits VerticalLayout {
                             initial: row.initial;
                         }
                         Text {
-                            text: row.own ? row.author + " (you)" : row.author;
+                            text: row.own ? row.author + @tr(" (you)") : row.author;
                             font-size: Theme.body;
                             color: Theme.gold;
                             vertical-alignment: center;
                         }
                         Text {
-                            text: row.date + (row.edited ? " · edited" : "");
+                            text: row.date + (row.edited ? @tr(" · edited") : "");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                             vertical-alignment: center;
@@ -156,12 +156,12 @@ export component CommentsView inherits VerticalLayout {
                         spacing: 16px;
                         if !row.deleted : LinkButton {
                             strong: true;
-                            text: "Reply";
+                            text: @tr("Reply");
                             clicked => { root.reply(row.id); }
                         }
                         if row.own && !row.deleted && root.links-enabled : LinkButton {
                             strong: true;
-                            text: "Edit on the website";
+                            text: @tr("Edit on the website");
                             clicked => { root.write(); }
                         }
                     }
@@ -173,9 +173,9 @@ export component CommentsView inherits VerticalLayout {
         if root.waiting == 1 || root.waiting == 2 : VerticalLayout {
             spacing: 12px;
             accessible-role: text;
-            accessible-label: "Loading the comments";
+            accessible-label: @tr("Loading the comments");
             if root.waiting == 2 : Text {
-                text: "Still loading. The connection seems slow.";
+                text: @tr("Still loading. The connection seems slow.");
                 font-size: Theme.meta;
                 color: Theme.text-muted;
             }
@@ -195,7 +195,7 @@ export component CommentsView inherits VerticalLayout {
         if root.more && !root.failed : HorizontalLayout {
             alignment: start;
             ActionButton {
-                text: root.loading-more ? "Loading" : "Older comments";
+                text: root.loading-more ? @tr("Loading") : @tr("Older comments");
                 enabled: !root.loading-more;
                 clicked => { root.older(); }
             }

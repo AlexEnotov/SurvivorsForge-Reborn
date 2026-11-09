@@ -2,9 +2,9 @@
 name = "survivorsforge"
 version = "0.7.2"
 edition = "2024"
-description = "Addon manager for Azeroth Survivors"
-repository = "https://github.com/Rezondes/SurvivorsForge"
-homepage = "https://rezondes.github.io/SurvivorsForge/"
+description = "Unofficial Reborn adaptation of SurvivorsForge, originally by Rezondes and contributors"
+repository = "https://github.com/AlexEnotov/SurvivorsForge-Reborn"
+homepage = "https://github.com/AlexEnotov/SurvivorsForge-Reborn"
 license = "AGPL-3.0-or-later"
 
 [workspace]
@@ -57,6 +57,7 @@ windows = { version = "0.62", features = ["ApplicationModel", "Foundation_Collec
 keyring = { version = "3.6", features = ["windows-native"] }
 
 [build-dependencies]
+serde_json = "1"
 slint-build = "1.18"
 # Only for the folder of toast.slint; without its `slint` feature.
 slint-toast = { path = "crates/slint-toast" }

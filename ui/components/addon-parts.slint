@@ -65,7 +65,7 @@ export component AddonIcon inherits Rectangle {
     }
 }
 
-// A grey surface that slowly pulses where content is still on its way, instead of a "Loading" text.
+// A grey surface that slowly pulses where content is still on its way, instead of a @tr("Loading") text.
 export component Placeholder inherits Rectangle {
     accessible-role: none;
     background: Theme.line;
@@ -89,7 +89,7 @@ export component Picture inherits Rectangle {
     background: Theme.field;
     clip: true;
     accessible-role: button;
-    accessible-label: root.caption != "" ? "Enlarge " + root.caption : "Enlarge picture";
+    accessible-label: root.caption != "" ? @tr("Enlarge ") + root.caption : @tr("Enlarge picture");
     if root.source.width == 0 && !root.failed : Placeholder {
         width: parent.width;
         height: parent.height;
@@ -97,7 +97,7 @@ export component Picture inherits Rectangle {
     if root.failed : Text {
         width: parent.width;
         height: parent.height;
-        text: root.caption != "" ? root.caption + ": could not be loaded" : "Picture could not be loaded";
+        text: root.caption != "" ? root.caption + @tr(": could not be loaded") : @tr("Picture could not be loaded");
         font-size: Theme.meta;
         color: Theme.text-muted;
         horizontal-alignment: center;

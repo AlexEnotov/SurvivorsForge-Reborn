@@ -40,7 +40,7 @@ export component Splash inherits Window {
                 clip: true;
                 background: root.bar-shown ? Theme.line : transparent;
                 accessible-role: progress-indicator;
-                accessible-label: "Loading SurvivorsForge";
+                accessible-label: @tr("Loading SurvivorsForge");
                 if root.bar-shown : Rectangle {
                     // From beyond the left edge to beyond the right one, every 1.2 seconds.
                     x: mod(animation-tick() / 1.2s, 1) * (root.bar-width + root.sweep-width) - root.sweep-width;

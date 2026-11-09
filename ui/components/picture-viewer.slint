@@ -58,7 +58,7 @@ export component PictureViewer inherits Rectangle {
             height: parent.height;
             horizontal-alignment: center;
             vertical-alignment: center;
-            text: root.shot.failed ? "This screenshot could not be loaded." : "Loading the screenshot...";
+            text: root.shot.failed ? @tr("This screenshot could not be loaded.") : @tr("Loading the screenshot...");
             font-size: Theme.body;
             color: Theme.text-muted;
         }
@@ -122,7 +122,7 @@ export component PictureViewer inherits Rectangle {
             if root.shots.length > 1 : VerticalLayout {
                 alignment: center;
                 GlyphButton {
-                    label: "Previous screenshot";
+                    label: @tr("Previous screenshot");
                     glyph: "M 10 3 L 5 8 L 10 13";
                     clicked => { root.step(-1); }
                 }
@@ -130,7 +130,7 @@ export component PictureViewer inherits Rectangle {
             if root.shots.length > 1 : VerticalLayout {
                 alignment: center;
                 GlyphButton {
-                    label: "Next screenshot";
+                    label: @tr("Next screenshot");
                     glyph: "M 6 3 L 11 8 L 6 13";
                     clicked => { root.step(1); }
                 }
@@ -138,7 +138,7 @@ export component PictureViewer inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 GlyphButton {
-                    label: "Zoom out";
+                    label: @tr("Zoom out");
                     glyph: "M 3 8 L 13 8";
                     clicked => { root.zoom-at(1 / 1.5, stage.width / 2, stage.height / 2); }
                 }
@@ -146,7 +146,7 @@ export component PictureViewer inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 GlyphButton {
-                    label: "Zoom in";
+                    label: @tr("Zoom in");
                     glyph: "M 3 8 L 13 8 M 8 3 L 8 13";
                     clicked => { root.zoom-at(1.5, stage.width / 2, stage.height / 2); }
                 }
@@ -154,7 +154,7 @@ export component PictureViewer inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 GlyphButton {
-                    label: "Fit to the window";
+                    label: @tr("Fit to the window");
                     glyph: "M 2 6 L 2 2 L 6 2 M 10 2 L 14 2 L 14 6 M 14 10 L 14 14 L 10 14 M 6 14 L 2 14 L 2 10";
                     clicked => { root.zoom-at(1 / root.scale, stage.width / 2, stage.height / 2); }
                 }
@@ -162,7 +162,7 @@ export component PictureViewer inherits Rectangle {
             VerticalLayout {
                 alignment: center;
                 GlyphButton {
-                    label: "Close";
+                    label: @tr("Close");
                     glyph: "M 3 3 L 13 13 M 13 3 L 3 13";
                     primary: true;
                     clicked => { root.close(); }

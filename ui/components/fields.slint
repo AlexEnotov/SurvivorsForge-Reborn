@@ -13,7 +13,7 @@ export component Field inherits Rectangle {
     in property <bool> enabled: true;
     // An x at the right end empties the field (the search); it says so as `clear-label`.
     in property <bool> clearable;
-    in property <string> clear-label: "Clear";
+    in property <string> clear-label: @tr("Clear");
     callback accepted();
     callback edited(string);
     // The cursor left the field, by Tab or a click elsewhere.
@@ -286,7 +286,7 @@ export component Dropdown inherits Rectangle {
     in property <[string]> list-labels;
     in property <[int]> levels;
     in-out property <int> current-index;
-    // What screen readers call the choice ("Sort by").
+    // What screen readers call the choice (@tr("Sort by")).
     in property <string> label;
     callback selected(int);
 
@@ -450,7 +450,7 @@ export component ViewToggle inherits Rectangle {
     clip: true;
 
     HorizontalLayout {
-        for half[i] in [{ label: "Tiles", on: true }, { label: "List", on: false }] : Rectangle {
+        for half[i] in [{ label: @tr("Tiles"), on: true }, { label: @tr("List"), on: false }] : Rectangle {
             property <bool> lit: root.tiles == half.on;
             accessible-role: button;
             accessible-label: half.label;

@@ -1,4 +1,72 @@
-# SurvivorsForge
+# SurvivorsForge Reborn
+
+An unofficial Reborn adaptation of [SurvivorsForge](https://github.com/Rezondes/SurvivorsForge).
+
+**Original project and authorship:** SurvivorsForge by [Rezondes](https://github.com/Rezondes)
+and the original contributors. Their Git history and existing copyright and license notices
+are preserved. This fork does not imply endorsement by the original author.
+
+**Reborn modifications:** maintained by [AlexEnotov](https://github.com/AlexEnotov), modified
+on **2026-11-09**, based on upstream commit
+[`f1f9a04`](https://github.com/Rezondes/SurvivorsForge/commit/f1f9a042fe89f0bf06f1b69195d792577b5eab7e).
+Changes include the Reborn folder/executable layout, separate launcher and direct-game actions,
+addon enable switches, a dark blue theme, and English/Russian/German UI translations.
+
+**License:** AGPL-3.0-or-later, as declared by the original project; see [LICENSE](LICENSE).
+The original license, warranty notices, font licenses and other bundled third-party notices
+are retained. Provide these modified sources when distributing this customized executable.
+
+## Reborn customization
+
+This checkout has a dark blue desktop theme with Segoe UI, smaller list rows and rounded controls.
+It uses the existing upstream platform and addon repositories. The website theme is unchanged.
+
+- Application language defaults to English regardless of the operating system. Choose English,
+  Russian or German in Settings > Language; changes apply immediately and persist in config.json.
+  Translations are bundled into the executable from translations/catalog.json. After adding UI
+  catalog entries, scripts/localize-ui.cjs marks the matching Slint strings for translation.
+  Addon names, descriptions and other author content retain their original language.
+- Interface compatibility notices are amber, with a clear statement that compatibility is
+  unconfirmed. Failed update checks retain their red error styling.
+
+- Select `<game>/Interface/AddOns` for Reborn, wherever the game is installed. Discovery supports
+  this layout as well as the original `benilla-config/AddOns` layout.
+- Reborn has separate buttons for `AzerothSurvivorsLauncher.exe` and direct launch of
+  `AzerothSurvivorsGame.exe` from `<game>`. Each button requires its own executable.
+  No drive or absolute game path is built in.
+- Installed addon rows and tiles have enable switches. They change standard character
+  `WTF/Account/<account>/<realm>/<character>/AddOns.txt` files for all existing characters,
+  keep unrelated entries, and back up existing files as `AddOns.txt.survivorsforge.bak`.
+  Addon files remain installed and updates preserve the switches. Mixed states are shown.
+  Log in with a character once to create a profile; close the game before switching addons.
+- Installed-addon Interface warnings use `30300` for Reborn and `11200` for the original layout.
+  This is a metadata check, not a guarantee that an addon works in either client.
+- Reborn game/data updates belong to its own launcher. This app does not apply the original
+  game's `wow.aethus.pl` updates to an `Interface/AddOns` installation.
+- Upstream application self-update and automatic URL-scheme registration are disabled in this
+  customized build so it cannot overwrite the changes or claim links from another installed copy.
+
+On this workspace, `./build-custom.ps1` reuses the local Rust/GNU tools in the neighboring test
+project. Pass `-ToolRoot <path>` to choose another portable toolchain, or use normal `cargo` from
+PATH. `./build-custom.ps1 -Test` runs launcher/shared-library tests with Slint layout information.
+The release executable is `target/release/SurvivorsForge.exe`.
+
+For a normal checkout on another computer, install Rust stable and the Windows C++ build
+tools (MSVC), or configure a GNU/MinGW toolchain, then build from the repository root:
+
+```powershell
+cargo build --release --locked -p survivorsforge
+```
+
+The optional portable-toolchain path in `build-custom.ps1` is only a convenience for this
+development workspace. No personal game path or local configuration is required to build.
+
+---
+
+## Original project documentation
+
+The documentation below describes the original SurvivorsForge platform and its release
+infrastructure. Upstream download links provide the original launcher, not this Reborn build.
 
 An addon manager for [Azeroth Survivors](https://wow.aethus.pl), a private World of Warcraft 1.12.1 instance, in the spirit of CurseForge but scoped to this one game. Creators publish their addons from GitHub, every release is scanned for harmful code and reviewed by admins, and players install, update and remove them.
 

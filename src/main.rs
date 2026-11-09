@@ -15,6 +15,7 @@ use survivorsforge::game_update::{self, ExeSeen, WebServer};
 use survivorsforge::github::{normalize_repo, ApiGitHub, Client, GitHub, RoutedGitHub, TokenGitHub, WebGitHub};
 use survivorsforge::install::{self, Request};
 use survivorsforge::local_scan;
+use survivorsforge::i18n;
 use survivorsforge::registry::{self, Origin, Registry, SourceSpec};
 use survivorsforge::repo_detect;
 use survivorsforge::scan::{scan_addons, InstalledAddon};
@@ -71,6 +72,7 @@ struct Core {
     pack_busy: bool,
     /// The game is starting or running: the launch button waits for it to close.
     game_running: bool,
+    addon_enable: survivorsforge::addon_enable::Store,
     /// What the game's server has that the game folder lacks; `None` when up to date or unknown.
     game_plan: Option<game_update::Plan>,
     /// The game's exe as last hashed.
@@ -201,6 +203,7 @@ impl Core {
             picked: Default::default(),
             pack_busy: false,
             game_running: false,
+            addon_enable: Default::default(),
             game_plan: None,
             game_exe: None,
             game_updating: false,
@@ -299,6 +302,13 @@ impl Core {
     fn rescan(&mut self) {
         if self.addons_dir().as_os_str().is_empty() {
             return;
+        }
+        match survivorsforge::addon_enable::Store::load(self.addons_dir()) {
+            Ok(store) => self.addon_enable = store,
+            Err(e) => {
+                self.addon_enable = Default::default();
+                self.notify(format!("Cannot read addon switches: {e}"), Kind::Error);
+            }
         }
         match scan_addons(&self.config.addons_dir) {
             Ok(scan) => {
@@ -408,11 +418,16 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
     };
     let warning = match &row.state {
         RowState::CheckFailed(message) => message.clone(),
-        _ if row.out_of_date => "Interface is not 11200: enable \"Load out of date AddOns\" in the game".into(),
+        _ if row.out_of_date => {
+            let legacy = config::interface_version(core.addons_dir()) == "30300"
+                && core.scan.iter().any(|a| row.folders.contains(&a.folder) && a.toc.interface.as_deref() == Some("11200"));
+            if legacy { "Addon for the legacy client. Compatibility with Reborn is not confirmed." }
+            else { "Addon interface differs from the selected client. Compatibility is not confirmed." }.into()
+        },
         _ => String::new(),
     };
     let (status, kind, progress) = row_progress(core, &row.id).unwrap_or((status, kind, -1.0));
-    AddonRow {
+    translate_row(AddonRow {
         id: row.id.clone().into(),
         name: row.name.clone().into(),
         initial: initial(&row.name),
@@ -431,9 +446,21 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
         can_remove: true,
         can_open: row.repo.is_some(),
         warning: warning.into(),
+        warning_error: matches!(row.state, RowState::CheckFailed(_)),
         can_pick: false,
         picked: false,
-    }
+        can_toggle: core.addon_enable.available() && !core.game_running && !core.game_updating && core.busy.is_empty(),
+        addon_enabled: core.addon_enable.state(&row.folders).0,
+        enable_mixed: core.addon_enable.state(&row.folders).1,
+    }, &core.config.language)
+}
+
+fn translate_row(mut row: AddonRow, language: &str) -> AddonRow {
+    row.status = i18n::text(language, row.status.as_str()).into();
+    row.action = i18n::text(language, row.action.as_str()).into();
+    row.badge = i18n::text(language, row.badge.as_str()).into();
+    row.warning = i18n::text(language, row.warning.as_str()).into();
+    row
 }
 
 /// A running install's step, else how the last one ended: (status, status kind, bar or `-1`).
@@ -470,7 +497,7 @@ fn browse_row(b: controller::BrowseRow, core: &Core, rows: &[Row]) -> AddonRow {
         (false, true) => (String::new(), 0),
     };
     let (status, status_kind, progress) = row_progress(core, &b.id).unwrap_or((status, status_kind, -1.0));
-    AddonRow {
+    translate_row(AddonRow {
         initial: initial(&b.name),
         icon: icon(core, &b.id),
         id: b.id.clone().into(),
@@ -490,7 +517,11 @@ fn browse_row(b: controller::BrowseRow, core: &Core, rows: &[Row]) -> AddonRow {
         can_pick,
         picked,
         warning: SharedString::new(),
-    }
+        warning_error: false,
+        can_toggle: false,
+        addon_enabled: false,
+        enable_mixed: false,
+    }, &core.config.language)
 }
 
 /// The platform entry behind an installed entry or a Browse row; `None` for GitHub and zip addons.
@@ -532,8 +563,8 @@ fn detail(core: &Core, rows: &[Row]) -> Option<AddonDetail> {
     Some(AddonDetail {
         row,
         category: facts.category.into(),
-        safety: facts.safety.into(),
-        game: facts.game.into(),
+        safety: i18n::text(&core.config.language, &facts.safety).into(),
+        game: i18n::text(&core.config.language, &facts.game).into(),
         folders: facts.folders.into(),
         needs: facts.needs.into(),
         about: ModelRc::new(VecModel::from(about)),
@@ -541,7 +572,7 @@ fn detail(core: &Core, rows: &[Row]) -> Option<AddonDetail> {
         about_loading,
         about_failed,
         on_website: entry.is_some(),
-        bug_label: entry.map(|a| controller::bug_report("", &a.id, &a.repo, loaded.issues_on, core.platform.issues_ready.get(&a.id).copied()).0).unwrap_or_default().into(),
+        bug_label: i18n::text(&core.config.language, &entry.map(|a| controller::bug_report("", &a.id, &a.repo, loaded.issues_on, core.platform.issues_ready.get(&a.id).copied()).0).unwrap_or_default()).into(),
         issues_ready: loaded.issues_on && entry.is_some_and(|a| core.platform.issues_ready.get(&a.id) == Some(&true)),
         comments_on: loaded.comments_on,
         can_auto_update: !*browse && matches!(core.state.get(id).map(|e| &e.source), Some(Source::Verified { .. })),
@@ -730,7 +761,7 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
     if slint::Model::row_count(&ui.get_settings_game_versions()) != core.game_versions.len() + 1 {
         fill_game_versions(ui, &core);
     }
-    let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+    let rows = controller::installed_rows_for_interface(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses, config::interface_version(core.addons_dir()));
     ui.set_installed_total(rows.len() as i32);
     let choices = controller::category_choices(&core.categories, &core.registry);
     // Search, category and safety check narrow both lists; both sort the same way.
@@ -748,12 +779,12 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
     let linked = |row: AddonRow| AddonRow { can_open: row.can_open && links, ..row };
     ui.set_installed_rows(model(installed.into_iter().map(|r| linked(installed_row(r, &core))).collect()));
     if slint::Model::row_count(&ui.get_category_labels()) != choices.len() + 1 {
-        let mut labels: Vec<SharedString> = vec!["All categories".into()];
+        let mut labels: Vec<SharedString> = vec![i18n::text(&core.config.language, "All categories").into()];
         labels.extend(choices.iter().map(|c| SharedString::from(c.label())));
         let index = core.category.as_ref().and_then(|w| choices.iter().position(|c| c.name.eq_ignore_ascii_case(w))).map_or(0, |i| i + 1);
         ui.set_category_labels(slint::ModelRc::new(slint::VecModel::from(labels)));
         let (list, levels): (Vec<SharedString>, Vec<i32>) =
-            std::iter::once(("All categories".to_string(), 0)).chain(controller::list_entries(&choices)).map(|(l, n)| (SharedString::from(l), n)).unzip();
+            std::iter::once(("All categories".to_string(), 0)).chain(controller::list_entries(&choices)).map(|(l, n)| (SharedString::from(i18n::text(&core.config.language, &l)), n)).unzip();
         ui.set_category_list_labels(slint::ModelRc::new(slint::VecModel::from(list)));
         ui.set_category_levels(slint::ModelRc::new(slint::VecModel::from(levels)));
         ui.set_category_index(index as i32);
@@ -846,10 +877,14 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
     ui.set_checking(core.checking);
     let game_missing = match config::game_executable(core.addons_dir(), USE_WINDOWS_GAME) {
         Some(_) => "",
-        None if USE_WINDOWS_GAME => "Can't launch: AzerothSurvivors.exe was not found next to benilla-config. Check the AddOns folder in Settings.",
-        None => "Can't launch: no Linux build of the game next to benilla-config. Start a Windows build through Steam, or check the AddOns folder in Settings.",
+        None if USE_WINDOWS_GAME => "Can't launch: no game executable was found in the game folder. For Reborn, select <game>/Interface/AddOns; AzerothSurvivorsLauncher.exe or AzerothSurvivorsGame.exe must be in <game>.",
+        None => "Can't launch: no native Linux build was found in the game folder. Start a Windows build through Steam, or check the AddOns folder in Settings.",
     };
-    ui.set_game_missing(game_missing.into());
+    ui.set_game_missing(i18n::text(&core.config.language, game_missing).into());
+    ui.set_reborn_game(config::uses_external_game_launcher(core.addons_dir()));
+    ui.set_launcher_found(config::reborn_executable(core.addons_dir(), false).is_some());
+    ui.set_direct_game_found(config::reborn_executable(core.addons_dir(), true).is_some());
+    ui.set_addon_switches_available(core.addon_enable.available());
     ui.set_game_running(core.game_running);
     ui.set_settings_game_versions_failed(core.game_versions_failed);
     ui.set_addons_busy(!core.busy.is_empty());
@@ -863,13 +898,13 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
         Some(_) => ("Update game data".to_string(), "New game data is out.".to_string()),
         None => (String::new(), core.game_note.clone()),
     };
-    ui.set_game_update(label.into());
-    ui.set_game_hint(hint.into());
+    ui.set_game_update(i18n::text(&core.config.language, &label).into());
+    ui.set_game_hint(i18n::text(&core.config.language, &hint).into());
     let (step, bar) = core.game_step.clone().unwrap_or_default();
-    ui.set_game_step(step.into());
+    ui.set_game_step(i18n::text(&core.config.language, &step).into());
     ui.set_game_progress(bar);
     // Row by row into the same model: a toast that stays keeps its timer.
-    let toasts: Vec<Toast> = core.toasts.items().iter().map(|t| Toast { id: t.id, text: t.text.as_str().into(), kind: t.kind as i32 }).collect();
+    let toasts: Vec<Toast> = core.toasts.items().iter().map(|t| Toast { id: t.id, text: i18n::text(&core.config.language, &t.text).into(), kind: t.kind as i32 }).collect();
     let model = ui.get_toasts();
     match slint::Model::as_any(&model).downcast_ref::<VecModel<Toast>>() {
         Some(rows) => slint_toast::sync(rows, toasts, |t| t.id),
@@ -915,9 +950,10 @@ thread_local! {
 }
 
 fn ask(ui: &AppWindow, title: &str, text: &str, ok: &str, danger: bool, action: impl FnOnce() + 'static) {
-    ui.set_confirm_title(title.into());
-    ui.set_confirm_text(text.into());
-    ui.set_confirm_ok(ok.into());
+    let language = i18n::language(ui.get_language_index());
+    ui.set_confirm_title(i18n::text(language, title).into());
+    ui.set_confirm_text(i18n::text(language, text).into());
+    ui.set_confirm_ok(i18n::text(language, ok).into());
     ui.set_confirm_danger(danger);
     ui.set_confirm_extra(SharedString::new());
     ui.set_confirm_info(false);
@@ -929,7 +965,7 @@ fn ask(ui: &AppWindow, title: &str, text: &str, ok: &str, danger: bool, action: 
 /// Like `ask`, with "Scan locally" next to OK: `scan` checks the addon on this computer first.
 fn ask_or_scan(ui: &AppWindow, title: &str, text: &str, ok: &str, danger: bool, scan: impl FnOnce() + 'static, action: impl FnOnce() + 'static) {
     ask(ui, title, text, ok, danger, action);
-    ui.set_confirm_extra("Scan locally".into());
+    ui.set_confirm_extra(i18n::text(i18n::language(ui.get_language_index()), "Scan locally").into());
     PENDING_EXTRA.with(|p| *p.borrow_mut() = Some(Box::new(scan)));
 }
 
@@ -1244,7 +1280,7 @@ fn start_install(ui: &AppWindow, shared: &Shared, id: String, deps: Vec<String>,
 }
 
 /// Keep launch and update mutually exclusive while the worker starts or waits for the game.
-fn on_launch_game(ui: &AppWindow, shared: &Shared) {
+fn on_launch_game(ui: &AppWindow, shared: &Shared, direct: bool) {
     let (addons, data_dir) = {
         let mut core = lock(shared);
         if core.game_running || core.game_updating || !core.busy.is_empty() {
@@ -1257,7 +1293,10 @@ fn on_launch_game(ui: &AppWindow, shared: &Shared) {
 
     let (weak, shared) = (ui.as_weak(), shared.clone());
     std::thread::spawn(move || {
-        let started = config::game_executable(&addons, USE_WINDOWS_GAME)
+        let executable = if config::uses_external_game_launcher(&addons) {
+            config::reborn_executable(&addons, direct)
+        } else { config::game_executable(&addons, USE_WINDOWS_GAME) };
+        let started = executable
             .ok_or_else(|| "The game was not found next to the AddOns folder.".to_string())
             .and_then(|exe| start_game(&exe, &data_dir).map_err(|e| format!("Could not start the game: {e}")));
         let (message, kind) = match started {
@@ -1311,8 +1350,11 @@ fn show_progress(shared: &Shared, now: bool, change: impl FnOnce(&mut Core)) {
     }
 }
 
-/// The game's folder, two levels above `<game>/benilla-config/AddOns`, when it holds the game's data.
+/// The legacy game's update folder. Reborn updates are owned by its separate game launcher.
 fn game_dir(addons_dir: &Path) -> Option<PathBuf> {
+    if config::uses_external_game_launcher(addons_dir) {
+        return None;
+    }
     addons_dir.parent()?.parent().filter(|dir| dir.join("Data").is_dir()).map(Path::to_path_buf)
 }
 
@@ -1330,6 +1372,9 @@ fn look_at_game(dir: &Path, seen: Option<&ExeSeen>) -> (Option<ExeSeen>, game_up
 fn on_update_game(ui: &AppWindow, shared: &Shared) {
     let (plan, running) = {
         let core = lock(shared);
+        if config::uses_external_game_launcher(core.addons_dir()) {
+            return;
+        }
         (core.game_plan.clone(), core.game_running || core.game_updating)
     };
     let Some(plan) = plan else { return };
@@ -1493,6 +1538,14 @@ fn check_updates(ui: &AppWindow, shared: &Shared) {
                 core.game_plan = plan;
                 core.game_exe = exe;
             });
+        } else {
+            show_progress(shared, true, |core| {
+                core.game_plan = None;
+                core.game_exe = None;
+                core.game_note = if config::uses_external_game_launcher(core.addons_dir()) {
+                    "Game updates are handled by AzerothSurvivorsLauncher.".into()
+                } else { String::new() };
+            });
         }
         // Without the server every addon (and the launcher itself) is checked on github.com directly,
         // against the stored list; what the server did not scan is marked as unchecked.
@@ -1503,7 +1556,7 @@ fn check_updates(ui: &AppWindow, shared: &Shared) {
             });
         });
         let results = Some(results);
-        let self_update = if self_update::from_store() {
+        let self_update = if !survivorsforge::UPSTREAM_SELF_UPDATE { None } else if self_update::from_store() {
             self_update::store_available()
         } else {
             github.latest_release(APP_REPO).ok().flatten().and_then(|release| self_update::available(APP_VERSION, &release))
@@ -1583,7 +1636,7 @@ fn on_detail_scan(ui: &AppWindow, shared: &Shared) {
     let (name, folders, addons) = {
         let core = lock(shared);
         let Some((id, _)) = core.detail.clone() else { return };
-        let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+        let rows = controller::installed_rows_for_interface(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses, config::interface_version(core.addons_dir()));
         let Some(row) = rows.into_iter().find(|r| r.id == id) else { return };
         (row.name, row.folders, core.addons_dir().to_path_buf())
     };
@@ -1594,6 +1647,25 @@ fn on_detail_scan(ui: &AppWindow, shared: &Shared) {
     scan_then(ui, shared, &name, move |_| local_scan::scan_folders(&addons, &folders), move |ui, _shared, report| {
         tell(ui, &title, &local_scan::summary(&report));
     });
+}
+
+fn on_row_toggle(ui: &AppWindow, shared: &Shared, id: String) {
+    let mut core = lock(shared);
+    if core.game_running || core.game_updating || !core.busy.is_empty() { return; }
+    let rows = controller::installed_rows_for_interface(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses, config::interface_version(core.addons_dir()));
+    let Some(row) = rows.into_iter().find(|r| r.id == id) else { return };
+    let on = !core.addon_enable.state(&row.folders).0;
+    let result = survivorsforge::addon_enable::require_game_closed()
+        .and_then(|()| core.addon_enable.set(&row.folders, on));
+    match result {
+        Ok(()) => {
+            core.rescan();
+            core.notify(format!("{}: {} for all existing characters. Takes effect on the next game start.", row.name, if on { "enabled" } else { "disabled" }), Kind::Success);
+        }
+        Err(e) => core.notify(format!("Could not change addon state: {e}"), Kind::Error),
+    }
+    drop(core);
+    refresh(ui, shared);
 }
 
 fn on_row_remove(ui: &AppWindow, shared: &Shared, id: String) {
@@ -2100,6 +2172,10 @@ fn on_setup_confirm(ui: &AppWindow, shared: &Shared) {
 
 fn fill_settings(ui: &AppWindow, shared: &Shared) {
     let core = lock(shared);
+    ui.set_language_index(i18n::index(&core.config.language));
+    let labels = |list: &[&str]| ModelRc::new(VecModel::from(list.iter().map(|l| SharedString::from(i18n::text(&core.config.language, l))).collect::<Vec<_>>()));
+    ui.set_safety_labels(labels(&controller::SAFETY_LABELS));
+    ui.set_sort_labels(labels(&controller::SORT_LABELS));
     ui.set_settings_path(core.config.addons_dir.to_string_lossy().into_owned().into());
     ui.set_settings_api_url(core.config.api_url.clone().unwrap_or_default().into());
     ui.set_settings_web_url(core.config.web_url.clone().unwrap_or_default().into());
@@ -2114,7 +2190,7 @@ fn fill_settings(ui: &AppWindow, shared: &Shared) {
 }
 
 fn fill_game_versions(ui: &AppWindow, core: &Core) {
-    let mut names: Vec<SharedString> = vec!["Not set".into()];
+    let mut names: Vec<SharedString> = vec![i18n::text(&core.config.language, "Not set").into()];
     names.extend(core.game_versions.iter().map(|g| SharedString::from(g.name.as_str())));
     let index = core.config.game_version.as_ref().and_then(|v| core.game_versions.iter().position(|g| &g.name == v)).map(|i| i + 1).unwrap_or(0);
     ui.set_settings_game_versions(slint::ModelRc::new(slint::VecModel::from(names)));
@@ -2202,6 +2278,9 @@ fn fetch_game_versions(client: &Client, api: &str) -> Option<Vec<controller::Gam
 }
 
 fn on_self_update(ui: &AppWindow, shared: &Shared) {
+    if !survivorsforge::UPSTREAM_SELF_UPDATE {
+        return;
+    }
     if !self_update::can_replace_self() {
         // In Game Mode a browser can't open over the app, so name the address instead.
         let opened = !ui.get_game_mode() && open::that(self_update::RELEASES_URL).is_ok();
@@ -2282,7 +2361,7 @@ fn main() -> Result<(), slint::PlatformError> {
         return Ok(());
     }
     // Debug builds leave the links to the installed launcher; the Store version has them from its manifest.
-    if !cfg!(debug_assertions) && !self_update::from_store() {
+    if !cfg!(debug_assertions) && !self_update::from_store() && survivorsforge::UPSTREAM_SELF_UPDATE {
         deep_link::register();
     }
     // The exe an update set aside, which may still run for a moment after the restart.
@@ -2298,6 +2377,7 @@ fn main() -> Result<(), slint::PlatformError> {
     );
     // The icon at once, before anything is read or built (ui/splash.slint).
     let splash = Splash::new()?;
+    let _ = slint::select_bundled_translation("en");
     if game_mode {
         splash.window().set_fullscreen(true);
     }
@@ -2335,6 +2415,7 @@ fn main() -> Result<(), slint::PlatformError> {
 fn start(loading: std::thread::JoinHandle<(Core, bool)>, link: Option<String>, game_mode: bool) -> Result<AppWindow, slint::PlatformError> {
     let ui = AppWindow::new()?;
     let (core, needs_setup) = loading.join().map_err(|_| slint::PlatformError::Other("loading the launcher failed".into()))?;
+    let _ = slint::select_bundled_translation(i18n::language(i18n::index(&core.config.language)));
     let shared: Shared = Arc::new(Mutex::new(core));
     {
         let (weak, s) = (ui.as_weak(), shared.clone());
@@ -2407,7 +2488,7 @@ fn start(loading: std::thread::JoinHandle<(Core, bool)>, link: Option<String>, g
     } else {
         ui.set_setup_searching(false);
     }
-    ui.set_addons_example(if cfg!(windows) { r"...\benilla-config\AddOns" } else { ".../benilla-config/AddOns" }.into());
+    ui.set_addons_example(if cfg!(windows) { r"...\Interface\AddOns" } else { ".../Interface/AddOns" }.into());
     ui.set_needs_setup(needs_setup);
     fill_settings(&ui, &shared);
 
@@ -2429,6 +2510,22 @@ fn start(loading: std::thread::JoinHandle<(Core, bool)>, link: Option<String>, g
         }
     });
     on!(on_setup_confirm, |ui, shared| on_setup_confirm(&ui, shared));
+    on!(on_language_changed, |ui, shared, index| {
+        let language = i18n::language(index);
+        {
+            let mut core = lock(shared);
+            let previous = core.config.language.clone();
+            core.config.language = language.into();
+            if let Err(e) = core.config.save(&core.data_dir) {
+                core.config.language = previous;
+                core.notify(format!("Language could not be saved: {e}"), Kind::Error);
+            }
+            let _ = slint::select_bundled_translation(i18n::language(i18n::index(&core.config.language)));
+        }
+        ui.set_category_labels(Default::default());
+        fill_settings(&ui, shared);
+        refresh(&ui, shared);
+    });
     on!(on_search_changed, |ui, shared, text| {
         lock(shared).search = text.to_string();
         refresh(&ui, shared);
@@ -2442,7 +2539,9 @@ fn start(loading: std::thread::JoinHandle<(Core, bool)>, link: Option<String>, g
             let _ = core.config.save(&core.data_dir);
         }
     });
-    on!(on_launch_game, |ui, shared| on_launch_game(&ui, shared));
+    on!(on_launch_game, |ui, shared| on_launch_game(&ui, shared, false));
+    on!(on_launch_direct, |ui, shared| on_launch_game(&ui, shared, true));
+    on!(on_row_toggle, |ui, shared, id| on_row_toggle(&ui, shared, id.to_string()));
     on!(on_update_game, |ui, shared| on_update_game(&ui, shared));
     on!(on_update_all, |ui, shared| on_update_all(&ui, shared));
     on!(on_install_zip, |ui, shared| on_install_zip(&ui, shared));
@@ -3213,6 +3312,36 @@ mod card_tests {
     use super::*;
 
     #[test]
+    fn interface_mismatch_is_a_localized_warning_but_failed_checks_remain_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut core = Core::new(dir.path().to_path_buf(), None);
+        core.config.addons_dir = dir.path().join("Interface/AddOns");
+        core.scan.push(InstalledAddon { folder: "Example".into(), toc: survivorsforge::toc::Toc::parse("## Interface: 11200", "Example") });
+        let mut row = Row {
+            id: "folder:Example".into(), name: "Example".into(), author: String::new(), version: String::new(),
+            badge: Badge::Unmanaged, state: RowState::Unmanaged, description: String::new(), repo: None,
+            out_of_date: true, folders: vec!["Example".into()],
+        };
+        let shown = installed_row(&row, &core);
+        assert!(!shown.warning_error);
+        assert_eq!(shown.warning.as_str(), "Addon for the legacy client. Compatibility with Reborn is not confirmed.");
+        core.config.language = "ru".into();
+        assert!(installed_row(&row, &core).warning.contains("Совместимость с Reborn"));
+        row.state = RowState::CheckFailed("Network error".into());
+        assert!(installed_row(&row, &core).warning_error);
+    }
+
+    #[test]
+    fn reborn_data_is_never_updated_from_the_legacy_game_server() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Data")).unwrap();
+        let reborn = dir.path().join("Interface/AddOns");
+        let legacy = dir.path().join("benilla-config/AddOns");
+        assert_eq!(game_dir(&reborn), None);
+        assert_eq!(game_dir(&legacy), Some(dir.path().to_path_buf()));
+    }
+
+    #[test]
     fn a_new_issue_frame_replaces_what_was_stored() {
         let dir = tempfile::tempdir().unwrap();
         let mut core = Core::new(dir.path().to_path_buf(), None);
@@ -3252,7 +3381,7 @@ mod card_tests {
             installed_at: 0,
         });
         core.statuses.insert(installed.id.clone(), UpdateStatus::UpToDate);
-        let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+        let rows = controller::installed_rows_for_interface(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses, config::interface_version(core.addons_dir()));
         let browse = |id: &str| {
             let b = controller::browse_rows(&core.registry, &core.state).into_iter().find(|b| b.id == id).unwrap();
             browse_row(b, &core, &rows)
@@ -3530,6 +3659,7 @@ mod layout_tests {
         fn the_toolbar_has_icon_buttons_that_name_themselves_on_hover() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             ui.set_update_count(3);
             ui.show().unwrap();
             let find = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).collect::<Vec<_>>();
@@ -3563,6 +3693,7 @@ mod layout_tests {
         fn fields_and_choices_say_what_they_are() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             ui.show().unwrap();
             let role = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).find_map(|e| e.accessible_role());
             if ElementHandle::find_by_accessible_label(&ui, "Installed (0)").next().is_none() {
@@ -3588,6 +3719,7 @@ mod layout_tests {
         fn escape_closes_a_dialog_and_return_keeps_a_dangerous_one_safe() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let (cancelled, accepted) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
             let (c, a) = (cancelled.clone(), accepted.clone());
             ui.on_confirm_cancel(move || c.set(c.get() + 1));
@@ -3606,6 +3738,7 @@ mod layout_tests {
         fn offline_stays_said_with_a_way_to_try_again() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let tried = Rc::new(Cell::new(false));
             let t = tried.clone();
             ui.on_check_updates(move || t.set(true));
@@ -3625,6 +3758,7 @@ mod layout_tests {
         fn ctrl_f_goes_to_the_search_and_f5_checks_again() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let checks = Rc::new(Cell::new(0));
             let c = checks.clone();
             ui.on_check_updates(move || c.set(c.get() + 1));
@@ -3649,6 +3783,7 @@ mod layout_tests {
         fn the_addons_folder_opens_from_the_bottom_line() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let opened = Rc::new(Cell::new(false));
             let o = opened.clone();
             ui.on_open_addons_dir(move || o.set(true));
@@ -3669,6 +3804,7 @@ mod layout_tests {
         fn the_search_clears_with_its_button_and_with_escape() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let searched = Rc::new(std::cell::RefCell::new(None::<String>));
             let s = searched.clone();
             ui.on_search_changed(move |text| *s.borrow_mut() = Some(text.to_string()));
@@ -3692,6 +3828,7 @@ mod layout_tests {
         fn a_version_opens_its_release_notes() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let opened = Rc::new(std::cell::RefCell::new(String::new()));
             let o = opened.clone();
             ui.on_detail_link(move |page| *o.borrow_mut() = page.to_string());
@@ -3715,6 +3852,7 @@ mod layout_tests {
         fn the_game_waits_while_addons_are_installed() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             ui.show().unwrap();
             let find = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).next();
             if find("Installed (0)").is_none() {
@@ -3730,9 +3868,53 @@ mod layout_tests {
         }
 
         #[test]
+        fn reborn_exposes_two_independent_launch_actions() {
+            i_slint_backend_testing::init_no_event_loop();
+            let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
+            let launched = Rc::new(Cell::new(0));
+            let launcher = launched.clone();
+            ui.on_launch_game(move || launcher.set(1));
+            let direct = launched.clone();
+            ui.on_launch_direct(move || direct.set(2));
+            ui.set_reborn_game(true);
+            ui.set_launcher_found(true);
+            ui.set_direct_game_found(true);
+            ui.show().unwrap();
+            let find = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).next();
+            find("Launch launcher").expect("launcher action").invoke_accessible_default_action();
+            assert_eq!(launched.get(), 1);
+            find("Launch without launcher").expect("direct action").invoke_accessible_default_action();
+            assert_eq!(launched.get(), 2);
+            ui.set_launcher_found(false);
+            assert_eq!(find("Launch launcher").unwrap().accessible_enabled(), Some(false));
+            assert_eq!(find("Launch without launcher").unwrap().accessible_enabled(), Some(true));
+        }
+
+        #[test]
+        fn bundled_languages_switch_existing_controls_without_restarting() {
+            i_slint_backend_testing::init_no_event_loop();
+            let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
+            ui.set_reborn_game(true);
+            ui.show().unwrap();
+            let find = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).next();
+            assert!(find("Settings").is_some());
+            slint::select_bundled_translation("ru").unwrap();
+            assert!(find("Настройки").is_some());
+            assert!(find("Запустить лаунчер").is_some());
+            slint::select_bundled_translation("de").unwrap();
+            assert!(find("Einstellungen").is_some());
+            assert!(find("Launcher starten").is_some());
+            slint::select_bundled_translation("en").unwrap();
+            assert!(find("Settings").is_some());
+        }
+
+        #[test]
         fn an_empty_filtered_list_offers_to_clear_the_filters() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let cleared = Rc::new(Cell::new(false));
             let c = cleared.clone();
             ui.on_search_changed(move |text| c.set(text.is_empty()));
@@ -3751,6 +3933,9 @@ mod layout_tests {
         fn the_platform_addresses_wait_under_advanced() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
+            // Test disclosure separately from viewport clipping; small-window scrolling has its own test.
+            ui.window().set_size(slint::LogicalSize::new(1180., 1400.));
             ui.set_page(2);
             ui.show().unwrap();
             let find = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).next();
@@ -3771,6 +3956,8 @@ mod layout_tests {
         fn a_refused_setting_says_why_under_its_field() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
+            ui.window().set_size(slint::LogicalSize::new(1180., 1400.));
             ui.set_page(2);
             ui.set_settings_api_error("\"x\" is not a web address (http:// or https://)".into());
             ui.show().unwrap();
@@ -3786,6 +3973,7 @@ mod layout_tests {
         fn a_long_failure_stays_in_its_row() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let failure = "Failed: Network error: https://github.com/migwynkriid13/SurvivorsDragonUi/releases/download/build-cb544e7127f49220afa1951053c6e1a32740cb3a/SurvivorsDragonUi.zip: Network Error: Error encountered in the status line: A connection attempt failed because the connected party did not properly respond after a period of time (os error 10060)";
             let rows = vec![
                 crate::AddonRow { id: "a".into(), name: "SurvivorsDragonUi".into(), status: failure.into(), status_kind: 3, ..Default::default() },
@@ -3808,6 +3996,7 @@ mod layout_tests {
         fn a_long_failure_on_a_tile_shows_whole_on_hover() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let failure = "Failed: Network error: the connected party did not properly respond after a period of time (os error 10060)";
             let rows = vec![crate::AddonRow { id: "a".into(), name: "SurvivorsDragonUi".into(), status: failure.into(), status_kind: 3, ..Default::default() }];
             ui.set_installed_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
@@ -3830,6 +4019,7 @@ mod layout_tests {
         fn a_toast_shows_bottom_right_and_closes() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let closed = Rc::new(Cell::new(0));
             let counter = closed.clone();
             ui.on_toast_dismiss(move |id| counter.set(id));
@@ -3852,6 +4042,7 @@ mod layout_tests {
         fn the_github_account_logs_in_waits_and_logs_out() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let (logins, cancels, logouts) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
             let (l, c, o) = (logins.clone(), cancels.clone(), logouts.clone());
             ui.on_login(move || l.set(l.get() + 1));
@@ -3888,6 +4079,7 @@ mod layout_tests {
         fn comments_are_written_and_answered_in_a_dialog() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let (logins, sends, replies, composes, cancels) =
                 (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
             let (l, s, r, c, x) = (logins.clone(), sends.clone(), replies.clone(), composes.clone(), cancels.clone());
@@ -3960,6 +4152,7 @@ mod layout_tests {
         fn issues_are_read_here_and_written_when_the_addon_takes_them() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let (shown, news, submits, replies, logins) =
                 (Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)), Rc::new(Cell::new(0)));
             let (s, n, u, r, l) = (shown.clone(), news.clone(), submits.clone(), replies.clone(), logins.clone());
@@ -4032,6 +4225,7 @@ mod layout_tests {
         fn offline_the_user_logs_in_to_github_alone_with_a_code() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let devices = Rc::new(Cell::new(0));
             let d = devices.clone();
             ui.on_login_device(move || d.set(d.get() + 1));
@@ -4086,6 +4280,7 @@ mod layout_tests {
         fn game_versions_say_loading_before_they_say_failed() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             ui.set_page(2);
             ui.set_checking(true);
             ui.show().unwrap();
@@ -4107,6 +4302,7 @@ mod layout_tests {
         fn the_statistics_say_what_goes_out_point_by_point() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             ui.set_page(2);
             ui.show().unwrap();
             let find = |label: &str| ElementHandle::find_by_accessible_label(&ui, label).next();
@@ -4131,6 +4327,7 @@ mod layout_tests {
         fn settings_scroll_in_the_smallest_window() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             ui.set_page(2);
             ui.window().set_size(slint::LogicalSize::new(980.0, 660.0));
             ui.show().unwrap();
@@ -4155,6 +4352,7 @@ mod layout_tests {
         fn settings_save_on_their_own_but_not_on_every_key() {
             i_slint_backend_testing::init_no_event_loop();
             let ui = crate::AppWindow::new().unwrap();
+            slint::select_bundled_translation("en").unwrap();
             let saves = Rc::new(Cell::new(0));
             let counter = saves.clone();
             ui.on_settings_save(move || counter.set(counter.get() + 1));

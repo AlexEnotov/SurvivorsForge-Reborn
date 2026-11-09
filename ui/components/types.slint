@@ -21,9 +21,13 @@ export struct AddonRow {
     can-remove: bool,
     can-open: bool,
     warning: string,
+    warning-error: bool,
     // Browse only: the row can go into an addon pack, and is picked for one.
     can-pick: bool,
     picked: bool,
+    can-toggle: bool,
+    addon-enabled: bool,
+    enable-mixed: bool,
 }
 
 // One block of a description: 0 paragraph, 1 heading, 2 list item, 3 code, 4 quote, 5 image.
@@ -68,7 +72,7 @@ export struct AddonDetail {
     auto-update-all: bool,
     // Put back to an older version on the Versions tab: no updates on its own until the newest.
     held: bool,
-    // "Report a bug" (the platform's form) or "Report on GitHub", as on the website.
+    // @tr("Report a bug") (the platform's form) or @tr("Report on GitHub"), as on the website.
     bug-label: string,
     // The platform takes bug reports: its Issues tab is worth a button.
     issues-ready: bool,
@@ -97,7 +101,7 @@ export struct VersionLine {
     tag: string,
     name: string,
     date: string,
-    // The platform's trust tag ("Checked", "Flagged") and its colour as on the website: 0 gold, 1 ok,
+    // The platform's trust tag (@tr("Checked"), @tr("Flagged")) and its colour as on the website: 0 gold, 1 ok,
     // 2 warn, 3 danger.
     trust: string,
     trust-kind: int,

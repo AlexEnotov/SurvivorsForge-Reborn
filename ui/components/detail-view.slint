@@ -127,7 +127,7 @@ export component DetailView inherits VerticalLayout {
     HorizontalLayout {
         alignment: start;
         LinkButton {
-            text: "< Back to the list";
+            text: @tr("< Back to the list");
             clicked => { root.back(); }
         }
     }
@@ -162,7 +162,7 @@ export component DetailView inherits VerticalLayout {
                 Rectangle { horizontal-stretch: 1; }
             }
             Text {
-                text: (root.detail.row.author != "" ? "by " + root.detail.row.author : "")
+                text: (root.detail.row.author != "" ? @tr("by ") + root.detail.row.author : "")
                     + (root.detail.category != "" ? "   " + root.detail.category : "")
                     + (root.detail.row.version != "" ? "   " + root.detail.row.version : "");
                 font-size: Theme.meta;
@@ -203,7 +203,7 @@ export component DetailView inherits VerticalLayout {
         alignment: start;
         spacing: Theme.gap-tight;
         if root.detail.on-website : GlyphButton {
-            label: "Open on the website";
+            label: @tr("Open on the website");
             // A globe.
             glyph: "M 1.5 8 A 6.5 6.5 0 0 1 14.5 8 A 6.5 6.5 0 0 1 1.5 8 Z M 1.5 8 L 14.5 8 M 8 1.5 C 5 4.5 5 11.5 8 14.5 M 8 1.5 C 11 4.5 11 11.5 8 14.5";
             enabled: root.links-enabled;
@@ -217,13 +217,13 @@ export component DetailView inherits VerticalLayout {
             clicked => { root.open(); }
         }
         if root.detail.row.can-remove && !root.detail.row.busy : GlyphButton {
-            label: "Scan locally";
+            label: @tr("Scan locally");
             // A magnifier.
             glyph: "M 1.5 6.5 A 5 5 0 0 1 11.5 6.5 A 5 5 0 0 1 1.5 6.5 Z M 10.1 10.1 L 14.5 14.5";
             clicked => { root.scan(); }
         }
         if root.detail.row.can-remove && !root.detail.row.busy : RemoveButton {
-            label: "Remove " + root.detail.row.name;
+            label: @tr("Remove ") + root.detail.row.name;
             clicked => { root.remove(); }
         }
         if root.detail.on-website : Rectangle {
@@ -238,7 +238,7 @@ export component DetailView inherits VerticalLayout {
             clicked => { root.link("bug"); }
         }
         if root.detail.on-website : GlyphButton {
-            label: "Report abuse";
+            label: @tr("Report abuse");
             // A flag.
             glyph: "M 3.5 15 L 3.5 1.5 M 3.5 2.5 L 13 2.5 L 10.5 6 L 13 9.5 L 3.5 9.5";
             enabled: root.links-enabled;
@@ -247,7 +247,7 @@ export component DetailView inherits VerticalLayout {
         if root.detail.on-website && !root.links-enabled : VerticalLayout {
             alignment: center;
             Text {
-                text: "The website opens in Desktop Mode.";
+                text: @tr("The website opens in Desktop Mode.");
                 font-size: Theme.meta;
                 color: Theme.text-muted;
             }
@@ -258,14 +258,14 @@ export component DetailView inherits VerticalLayout {
         alignment: start;
         spacing: 10px;
         PickBox {
-            label: "Update automatically";
+            label: @tr("Update automatically");
             enabled: !root.detail.auto-update-all;
             checked: root.detail.auto-update;
             toggled => { root.auto-update(); }
         }
         Text {
-            text: root.detail.held ? "Kept at an older version: it updates on its own again once you install the newest"
-                : root.detail.auto-update-all ? "Updates automatically (switched on for all addons in the settings)" : "Update automatically when the platform found nothing in a new version";
+            text: root.detail.held ? @tr("Kept at an older version: it updates on its own again once you install the newest")
+                : root.detail.auto-update-all ? @tr("Updates automatically (switched on for all addons in the settings)") : @tr("Update automatically when the platform found nothing in a new version");
             font-size: Theme.body;
             color: root.detail.auto-update-all ? Theme.text-muted : Theme.text;
             vertical-alignment: center;
@@ -275,7 +275,7 @@ export component DetailView inherits VerticalLayout {
     if root.detail.row.warning != "" : Text {
         text: root.detail.row.warning;
         font-size: Theme.body;
-        color: Theme.danger;
+        color: root.detail.row.warning-error ? Theme.danger : Theme.warn;
         wrap: word-wrap;
     }
 
@@ -283,27 +283,27 @@ export component DetailView inherits VerticalLayout {
         alignment: start;
         spacing: Theme.gap-tight;
         TabButton {
-            text: "Overview";
+            text: @tr("Overview");
             active: root.tab == 0;
             clicked => { root.open-tab(0); }
         }
         if root.detail.shots.length > 0 : TabButton {
-            text: "Screenshots";
+            text: @tr("Screenshots");
             active: root.tab == 1;
             clicked => { root.open-tab(1); }
         }
         if root.detail.issues-ready : TabButton {
-            text: "Issues";
+            text: @tr("Issues");
             active: root.tab == 2;
             clicked => { root.open-tab(2); }
         }
         if root.detail.comments-on : TabButton {
-            text: "Comments";
+            text: @tr("Comments");
             active: root.tab == 3;
             clicked => { root.open-tab(3); }
         }
         TabButton {
-            text: "Versions";
+            text: @tr("Versions");
             active: root.tab == 4;
             clicked => { root.open-tab(4); }
         }
@@ -352,13 +352,13 @@ export component DetailView inherits VerticalLayout {
         vertical-stretch: 1;
         spacing: 18px;
         if root.detail.safety != "" : Fact {
-            label: "Safety check";
+            label: @tr("Safety check");
             text: root.detail.safety;
         }
         VerticalLayout {
             spacing: 10px;
             Text {
-                text: "About";
+                text: @tr("About");
                 font-size: Theme.body;
                 color: Theme.gold;
             }
@@ -367,7 +367,7 @@ export component DetailView inherits VerticalLayout {
                 enlarge(image, caption) => { root.enlarge(image, caption); }
             }
             if root.detail.about-failed : Text {
-                text: "The full description could not be loaded; this is the short summary. It loads on the next start.";
+                text: @tr("The full description could not be loaded; this is the short summary. It loads on the next start.");
                 font-size: Theme.meta;
                 color: Theme.text-muted;
                 wrap: word-wrap;
@@ -376,7 +376,7 @@ export component DetailView inherits VerticalLayout {
             if root.detail.about-loading : VerticalLayout {
                 spacing: 8px;
                 accessible-role: text;
-                accessible-label: "Loading the description";
+                accessible-label: @tr("Loading the description");
                 Placeholder { height: 12px; }
                 HorizontalLayout {
                     Placeholder { height: 12px; horizontal-stretch: 9; }
@@ -389,15 +389,15 @@ export component DetailView inherits VerticalLayout {
             }
         }
         if root.detail.game != "" : Fact {
-            label: "Game version";
+            label: @tr("Game version");
             text: root.detail.game;
         }
         if root.detail.folders != "" : Fact {
-            label: "Folders";
+            label: @tr("Folders");
             text: root.detail.folders;
         }
         if root.detail.needs != "" : Fact {
-            label: "Needs";
+            label: @tr("Needs");
             text: root.detail.needs;
         }
     }

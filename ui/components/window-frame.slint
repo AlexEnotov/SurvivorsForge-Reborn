@@ -95,17 +95,17 @@ export component TitleBar inherits Rectangle {
             horizontal-stretch: 1;
         }
         CaptionButton {
-            label: "Minimize";
+            label: @tr("Minimize");
             glyph: 0;
             clicked => { root.minimize(); }
         }
         CaptionButton {
-            label: root.maximized ? "Restore" : "Maximize";
+            label: root.maximized ? @tr("Restore") : @tr("Maximize");
             glyph: root.maximized ? 2 : 1;
             clicked => { root.toggle-maximize(); }
         }
         CaptionButton {
-            label: "Close";
+            label: @tr("Close");
             glyph: 3;
             clicked => { root.close(); }
         }

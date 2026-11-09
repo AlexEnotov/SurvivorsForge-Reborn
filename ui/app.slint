@@ -19,7 +19,7 @@ export struct Suggestion {
 // Shown under a path field when there is no file dialog to browse with.
 component TypePathHint inherits Text {
     in property <bool> game-mode;
-    text: "Type the full path to the AddOns folder." + (root.game-mode ? " Press STEAM + X for the on-screen keyboard." : "");
+    text: @tr("Type the full path to the AddOns folder.") + (root.game-mode ? @tr(" Press STEAM + X for the on-screen keyboard.") : "");
     font-size: Theme.meta;
     color: Theme.text-muted;
     wrap: word-wrap;
@@ -58,11 +58,11 @@ component SetupView inherits Rectangle {
                         horizontal-alignment: center;
                     }
                     SectionHeading {
-                        text: "AddOns folder";
+                        text: @tr("AddOns folder");
                         size: 22px;
                     }
                     Text {
-                        text: "Select the AddOns folder of Azeroth Survivors. It sits next to the game's executable, for example " + root.example + ".";
+                        text: @tr("Select the AddOns folder of Azeroth Survivors. For Reborn, use Interface/AddOns inside the game folder, for example ") + root.example + ".";
                         font-size: Theme.body;
                         color: Theme.text;
                         wrap: word-wrap;
@@ -71,8 +71,8 @@ component SetupView inherits Rectangle {
                         spacing: Theme.gap-tight;
                         Field {
                             text <=> root.path;
-                            placeholder: "AddOns folder";
-                            label: "AddOns folder path";
+                            placeholder: @tr("AddOns folder");
+                            label: @tr("AddOns folder path");
                             accepted => { root.confirm(); }
                             edited(_) => {
                                 root.error = "";
@@ -80,7 +80,7 @@ component SetupView inherits Rectangle {
                             }
                         }
                         if root.file-dialog : ActionButton {
-                            text: "Browse...";
+                            text: @tr("Browse...");
                             clicked => { root.browse(); }
                         }
                     }
@@ -88,7 +88,7 @@ component SetupView inherits Rectangle {
                         game-mode: root.game-mode;
                     }
                     if root.error != "" : Text {
-                        text: "Error: " + root.error;
+                        text: @tr("Error: ") + root.error;
                         font-size: Theme.body;
                         color: Theme.danger;
                         wrap: word-wrap;
@@ -104,24 +104,24 @@ component SetupView inherits Rectangle {
                         spacing: 6px;
                         min-height: 34px;
                         if root.searching : Text {
-                            text: "Searching this computer for the AddOns folder...";
+                            text: @tr("Searching this computer for the AddOns folder...");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                         }
                         if !root.searching && root.suggestions.length == 0 : Text {
-                            text: "No AddOns folder found automatically. If the game never ran yet, start it once so it creates the folder. Then "
-                                + (root.file-dialog ? "use Browse or type the path." : "type the path.");
+                            text: @tr("No AddOns folder found automatically. If the game never ran yet, start it once so it creates the folder. Then ")
+                                + (root.file-dialog ? @tr("use Browse or type the path.") : "type the path.");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                             wrap: word-wrap;
                         }
                         if root.suggestions.length > 0 : Text {
-                            text: "Found on this computer. Select one to use it:";
+                            text: @tr("Found on this computer. Select one to use it:");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                         }
                         for suggestion in root.suggestions : ActionButton {
-                            text: "Use " + suggestion.label;
+                            text: @tr("Use ") + suggestion.label;
                             min-width: 0;
                             clicked => { root.pick(suggestion.path); }
                         }
@@ -130,12 +130,12 @@ component SetupView inherits Rectangle {
                         alignment: center;
                         spacing: Theme.gap-tight;
                         if root.game-mode : ActionButton {
-                            text: "Quit";
+                            text: @tr("Quit");
                             large: true;
                             clicked => { root.quit(); }
                         }
                         ActionButton {
-                            text: root.warning != "" ? "Use This Folder Anyway" : "Continue";
+                            text: root.warning != "" ? @tr("Use This Folder Anyway") : @tr("Continue");
                             primary: true;
                             large: true;
                             enabled: root.path != "";
@@ -178,7 +178,7 @@ component FieldError inherits HorizontalLayout {
     in property <string> text;
     padding-left: 180px + Theme.gap-loose;
     Text {
-        text: "Error: " + root.text;
+        text: @tr("Error: ") + root.text;
         font-size: Theme.meta;
         color: Theme.danger;
         wrap: word-wrap;
@@ -186,8 +186,10 @@ component FieldError inherits HorizontalLayout {
 }
 
 component SettingsView inherits VerticalLayout {
+    in-out property <int> language-index;
+    callback language-changed(int);
     in-out property <string> path;
-    // "Not set" first, then the platform's game versions; empty without the platform.
+    // @tr("Not set") first, then the platform's game versions; empty without the platform.
     in property <[string]> game-versions;
     in-out property <int> game-index;
     // The update check runs: the game versions may still come.
@@ -225,7 +227,7 @@ component SettingsView inherits VerticalLayout {
     in property <bool> device-login-offered;
     // The platform cannot be reached: its login cannot work.
     in property <bool> offline;
-    // The device code "Copy code" last copied; a new code can be copied again.
+    // The device code @tr("Copy code") last copied; a new code can be copied again.
     property <string> copied-code;
     // The platform addresses are shown: opened by hand, or a refused one has to be fixed.
     property <bool> advanced-open;
@@ -244,16 +246,26 @@ component SettingsView inherits VerticalLayout {
     alignment: start;
 
     SettingRow {
-        label: "AddOns folder";
+        label: @tr("Language");
+        Dropdown {
+            label: @tr("Language");
+            model: ["English", "Русский", "Deutsch"];
+            current-index <=> root.language-index;
+            selected => { root.language-changed(self.current-index); }
+        }
+    }
+
+    SettingRow {
+        label: @tr("AddOns folder");
         Field {
             text <=> root.path;
-            label: "AddOns folder";
+            label: @tr("AddOns folder");
             invalid: root.path-error != "";
             accepted => { root.save(); }
             focus-lost => { root.save(); }
         }
         if root.file-dialog : ActionButton {
-            text: "Browse...";
+            text: @tr("Browse...");
             clicked => { root.browse(); }
         }
     }
@@ -265,18 +277,18 @@ component SettingsView inherits VerticalLayout {
         }
     }
     SettingRow {
-        label: "Game version";
+        label: @tr("Game version");
         if root.game-versions.length > 1 : Dropdown {
-            label: "Game version";
+            label: @tr("Game version");
             model: root.game-versions;
             current-index <=> root.game-index;
             selected => { root.save(); }
         }
         // The list comes from the platform: say so instead of dropping the row.
         if root.game-versions.length <= 1 : Text {
-            text: root.checking ? "Loading the game versions..."
-                : root.game-versions-failed ? "The platform does not answer, so its game versions are not loaded."
-                : "The platform lists no game versions yet.";
+            text: root.checking ? @tr("Loading the game versions...")
+                : root.game-versions-failed ? @tr("The platform does not answer, so its game versions are not loaded.")
+                : @tr("The platform lists no game versions yet.");
             font-size: Theme.meta;
             color: Theme.text-muted;
             vertical-alignment: center;
@@ -284,7 +296,7 @@ component SettingsView inherits VerticalLayout {
         }
     }
     SettingRow {
-        label: "GitHub account";
+        label: @tr("GitHub account");
         if root.account-login != "" : HorizontalLayout {
             spacing: 10px;
             AddonIcon {
@@ -300,32 +312,32 @@ component SettingsView inherits VerticalLayout {
                 vertical-alignment: center;
             }
             ActionButton {
-                text: "Log out";
+                text: @tr("Log out");
                 clicked => { root.logout(); }
             }
         }
         if root.account-login == "" && !root.account-busy && root.account-github-only != "" : HorizontalLayout {
             spacing: 10px;
             Text {
-                text: root.account-github-only + " (GitHub only)";
+                text: root.account-github-only + @tr(" (GitHub only)");
                 font-size: Theme.body;
                 color: Theme.text;
                 vertical-alignment: center;
             }
             ActionButton {
-                text: "Log out";
+                text: @tr("Log out");
                 clicked => { root.logout(); }
             }
         }
         if root.account-login == "" && !root.account-busy : ActionButton {
             // Logged in to GitHub alone already: this is the platform login on top.
-            text: root.account-github-only != "" ? "Log in to SurvivorsForge too" : "Log in with GitHub";
+            text: root.account-github-only != "" ? @tr("Log in to SurvivorsForge too") : @tr("Log in with GitHub");
             // Game Mode opens no browser; offline the browser would wait for a dead page.
             enabled: !root.game-mode && !root.offline;
             clicked => { root.login(); }
         }
         if root.account-login == "" && !root.account-busy && root.account-github-only == "" && root.device-login-offered : ActionButton {
-            text: "Log in to GitHub only";
+            text: @tr("Log in to GitHub only");
             clicked => { root.login-device(); }
         }
         // Two lines: where to go, then the code with its buttons; one line is too wide next to the label.
@@ -335,7 +347,7 @@ component SettingsView inherits VerticalLayout {
                 alignment: start;
                 spacing: 6px;
                 Text {
-                    text: "Enter this code at";
+                    text: @tr("Enter this code at");
                     font-size: Theme.body;
                     color: Theme.text-muted;
                     vertical-alignment: center;
@@ -366,10 +378,10 @@ component SettingsView inherits VerticalLayout {
                     selection-background-color: #8A6C3A;
                     selection-foreground-color: Theme.gold-bright;
                     vertical-alignment: center;
-                    accessible-label: "Device code " + root.account-device-code;
+                    accessible-label: @tr("Device code ") + root.account-device-code;
                 }
                 ActionButton {
-                    text: root.copied-code == root.account-device-code ? "Copied" : "Copy code";
+                    text: root.copied-code == root.account-device-code ? @tr("Copied") : @tr("Copy code");
                     clicked => {
                         device-code.select-all();
                         device-code.copy();
@@ -378,7 +390,7 @@ component SettingsView inherits VerticalLayout {
                     }
                 }
                 ActionButton {
-                    text: "Cancel";
+                    text: @tr("Cancel");
                     clicked => { root.login-cancel(); }
                 }
             }
@@ -386,13 +398,13 @@ component SettingsView inherits VerticalLayout {
         if root.account-busy && root.account-device-code == "" : HorizontalLayout {
             spacing: 10px;
             Text {
-                text: "Waiting for the browser...";
+                text: @tr("Waiting for the browser...");
                 font-size: Theme.body;
                 color: Theme.text-muted;
                 vertical-alignment: center;
             }
             ActionButton {
-                text: "Cancel";
+                text: @tr("Cancel");
                 clicked => { root.login-cancel(); }
             }
         }
@@ -400,23 +412,23 @@ component SettingsView inherits VerticalLayout {
     if root.account-error != "" : FieldError { text: root.account-error; }
     FieldHint {
         text: root.device-login-offered && root.account-login == ""
-            ? "The SurvivorsForge server cannot be reached. Logging in to GitHub only still gets updates past GitHub's limits for logged-out users; comments and issues need the server."
+            ? @tr("The SurvivorsForge server cannot be reached. Logging in to GitHub only still gets updates past GitHub's limits for logged-out users; comments and issues need the server.")
             : root.offline && root.account-login == ""
-            ? "The SurvivorsForge server cannot be reached, so its login waits until it is back."
+            ? @tr("The SurvivorsForge server cannot be reached, so its login waits until it is back.")
             : root.game-mode && root.account-login == ""
-            ? "Log in from the desktop: Game Mode opens no browser."
+            ? @tr("Log in from the desktop: Game Mode opens no browser.")
             : root.account-login != ""
-            ? "You write comments and issues in the launcher as " + root.account-login + "."
-            : "Optional. Lets you write comments and issues from the launcher, as on the website.";
+            ? @tr("You write comments and issues in the launcher as ") + root.account-login + "."
+            : @tr("Optional. Lets you write comments and issues from the launcher, as on the website.");
     }
     SettingRow {
-        label: "Statistics";
+        label: @tr("Statistics");
         VerticalLayout {
             spacing: 8px;
             HorizontalLayout {
                 spacing: 10px;
                 PickBox {
-                    label: "Count my installs in the public statistics";
+                    label: @tr("Count my installs in the public statistics");
                     checked: root.telemetry;
                     toggled => {
                         root.telemetry = !root.telemetry;
@@ -424,7 +436,7 @@ component SettingsView inherits VerticalLayout {
                     }
                 }
                 TickLabel {
-                    text: "Count my installs in the public statistics";
+                    text: @tr("Count my installs in the public statistics");
                     clicked => {
                         root.telemetry = !root.telemetry;
                         root.save();
@@ -435,7 +447,7 @@ component SettingsView inherits VerticalLayout {
                 spacing: 10px;
                 padding-left: (Theme.touch ? 44px : 24px) + 10px;
                 PickBox {
-                    label: "Send an anonymous installation ID";
+                    label: @tr("Send an anonymous installation ID");
                     enabled: root.telemetry;
                     checked: root.send-install-id;
                     toggled => {
@@ -444,7 +456,7 @@ component SettingsView inherits VerticalLayout {
                     }
                 }
                 TickLabel {
-                    text: "Send an anonymous installation ID";
+                    text: @tr("Send an anonymous installation ID");
                     enabled: root.telemetry;
                     clicked => {
                         root.send-install-id = !root.send-install-id;
@@ -469,7 +481,7 @@ component SettingsView inherits VerticalLayout {
                         height: point1.preferred-height;
                         point1 := Text {
                             width: parent.width;
-                            text: "Sent after an install, update or rollback of a verified addon: the addon and version, whether it worked (a fixed code if not), the launcher version and the operating system.";
+                            text: @tr("Sent after an install, update or rollback of a verified addon: the addon and version, whether it worked (a fixed code if not), the launcher version and the operating system.");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                             wrap: word-wrap;
@@ -490,7 +502,7 @@ component SettingsView inherits VerticalLayout {
                         height: point2.preferred-height;
                         point2 := Text {
                             width: parent.width;
-                            text: "Never sent: your name or file contents. No IP address is stored.";
+                            text: @tr("Never sent: your name or file contents. No IP address is stored.");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                             wrap: word-wrap;
@@ -511,7 +523,7 @@ component SettingsView inherits VerticalLayout {
                         height: point3.preferred-height;
                         point3 := Text {
                             width: parent.width;
-                            text: "The installation ID is a random number that counts active launchers. The platform forgets it after 90 days.";
+                            text: @tr("The installation ID is a random number that counts active launchers. The platform forgets it after 90 days.");
                             font-size: Theme.meta;
                             color: Theme.text-muted;
                             wrap: word-wrap;
@@ -522,13 +534,13 @@ component SettingsView inherits VerticalLayout {
         }
     }
     SettingRow {
-        label: "Updates";
+        label: @tr("Updates");
         VerticalLayout {
             spacing: 6px;
             HorizontalLayout {
                 spacing: 10px;
                 PickBox {
-                    label: "Update all addons automatically";
+                    label: @tr("Update all addons automatically");
                     checked: root.auto-update;
                     toggled => {
                         root.auto-update = !root.auto-update;
@@ -536,7 +548,7 @@ component SettingsView inherits VerticalLayout {
                     }
                 }
                 TickLabel {
-                    text: "Update all addons automatically";
+                    text: @tr("Update all addons automatically");
                     clicked => {
                         root.auto-update = !root.auto-update;
                         root.save();
@@ -544,7 +556,7 @@ component SettingsView inherits VerticalLayout {
                 }
             }
             Text {
-                text: "Only versions that passed the platform's safety check. Flagged versions wait for you. You can switch this on for single addons in their details.";
+                text: @tr("Only versions that passed the platform's safety check. Flagged versions wait for you. You can switch this on for single addons in their details.");
                 font-size: Theme.meta;
                 color: Theme.text-muted;
                 wrap: word-wrap;
@@ -552,7 +564,7 @@ component SettingsView inherits VerticalLayout {
         }
     }
     SettingRow {
-        label: "Version";
+        label: @tr("Version");
         Text {
             text: "SurvivorsForge " + root.version;
             font-size: Theme.body;
@@ -565,39 +577,39 @@ component SettingsView inherits VerticalLayout {
     HorizontalLayout {
         alignment: start;
         LinkButton {
-            text: (root.show-advanced ? "Hide advanced settings" : "Show advanced settings")
-                + (!root.show-advanced && (root.api-url != "" || root.web-url != "") ? " (another platform is set)" : "");
+            text: (root.show-advanced ? @tr("Hide advanced settings") : @tr("Show advanced settings"))
+                + (!root.show-advanced && (root.api-url != "" || root.web-url != "") ? @tr(" (another platform is set)") : "");
             clicked => { root.advanced-open = !root.show-advanced; }
         }
     }
     if root.show-advanced : VerticalLayout {
         spacing: 16px;
         SettingRow {
-            label: "Platform API";
+            label: @tr("Platform API");
             Field {
                 text <=> root.api-url;
                 placeholder: root.api-default;
-                label: "Platform API address";
+                label: @tr("Platform API address");
                 invalid: root.api-error != "";
                 accepted => { root.save(); }
                 focus-lost => { root.save(); }
             }
         }
         if root.api-error != "" : FieldError { text: root.api-error; }
-        FieldHint { text: "Empty uses the built-in platform, as shown in grey."; }
+        FieldHint { text: @tr("Empty uses the built-in platform, as shown in grey."); }
         SettingRow {
-            label: "Platform website";
+            label: @tr("Platform website");
             Field {
                 text <=> root.web-url;
                 placeholder: root.web-default;
-                label: "Platform website address";
+                label: @tr("Platform website address");
                 invalid: root.web-error != "";
                 accepted => { root.save(); }
                 focus-lost => { root.save(); }
             }
         }
         if root.web-error != "" : FieldError { text: root.web-error; }
-        FieldHint { text: "Empty uses the built-in website."; }
+        FieldHint { text: @tr("Empty uses the built-in website."); }
     }
 }
 
@@ -641,7 +653,7 @@ export component AppWindow inherits Window {
     in-out property <int> page: 0;
     in property <[AddonRow]> installed-rows;
     in property <[AddonRow]> browse-rows;
-    // Browse filter: "All categories" first, subcategories read "Classes: Warrior".
+    // Browse filter: @tr("All categories") first, subcategories read "Classes: Warrior".
     in property <[string]> category-labels;
     in property <[string]> category-list-labels;
     in property <[int]> category-levels;
@@ -687,6 +699,14 @@ export component AppWindow inherits Window {
     // An addon is installed, updated or removed: the game would load its folder half written.
     in property <bool> addons-busy;
     callback launch-game();
+    callback launch-direct();
+    in-out property <int> language-index;
+    callback language-changed(int);
+    in property <bool> reborn-game;
+    in property <bool> launcher-found;
+    in property <bool> direct-game-found;
+    in property <bool> addon-switches-available;
+    callback row-toggle(string);
     // "Update to v0.133.0" when the game's server has a newer game; empty when up to date.
     in property <string> game-update;
     // What is installed, under the update button.
@@ -844,7 +864,7 @@ export component AppWindow inherits Window {
     in property <string> confirm-text;
     in property <string> confirm-ok;
     in property <bool> confirm-danger;
-    // A third button between Cancel and OK (for example "Scan locally"); hidden when empty.
+    // A third button between Cancel and OK (for example @tr("Scan locally")); hidden when empty.
     in property <string> confirm-extra;
     // Only an OK button: the dialog shows a result and has nothing to cancel.
     in property <bool> confirm-info;
@@ -967,8 +987,8 @@ export component AppWindow inherits Window {
                     width: 220px;
                     alignment: center;
                     spacing: 4px;
-                    ActionButton {
-                        text: root.game-running ? "Game running" : root.game-updating ? (root.game-step != "" ? root.game-step : "Updating the game...") : root.game-update != "" ? root.game-update : root.addons-busy ? "Installing addons..." : "Launch game";
+                    if !root.reborn-game : ActionButton {
+                        text: root.game-running ? @tr("Game running") : root.game-updating ? (root.game-step != "" ? root.game-step : @tr("Updating the game...")) : root.game-update != "" ? root.game-update : root.addons-busy ? @tr("Installing addons...") : @tr("Launch game");
                         primary: true;
                         large: true;
                         busy: root.game-updating;
@@ -983,6 +1003,17 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
+                    if root.reborn-game : ActionButton {
+                        text: root.game-running ? @tr("Running") : @tr("Launch launcher");
+                        primary: true;
+                        enabled: root.launcher-found && !root.game-running && !root.game-updating && !root.addons-busy;
+                        clicked => { root.launch-game(); }
+                    }
+                    if root.reborn-game : ActionButton {
+                        text: @tr("Launch without launcher");
+                        enabled: root.direct-game-found && !root.game-running && !root.game-updating && !root.addons-busy;
+                        clicked => { root.launch-direct(); }
+                    }
                     // One slot for the bar while the game updates and the link before: the header keeps its height.
                     if root.game-updating || root.game-update != "" || root.game-hint != "" : Rectangle {
                         height: Theme.touch ? 44px : 22px;
@@ -994,7 +1025,7 @@ export component AppWindow inherits Window {
                         if !root.game-updating && root.game-update != "" && root.game-missing == "" && !root.game-running && !root.addons-busy : LinkButton {
                             width: parent.width;
                             height: parent.height;
-                            text: "Start without updating";
+                            text: @tr("Start without updating");
                             clicked => { root.launch-game(); }
                         }
                     }
@@ -1015,7 +1046,7 @@ export component AppWindow inherits Window {
                     if root.game-missing != "" && root.page != 2 : HorizontalLayout {
                         alignment: center;
                         LinkButton {
-                            text: "Open Settings";
+                            text: @tr("Open Settings");
                             clicked => { root.open-page(2); }
                         }
                     }
@@ -1026,23 +1057,23 @@ export component AppWindow inherits Window {
                 alignment: center;
                 spacing: 10px;
                 TabButton {
-                    text: "Installed (" + root.installed-total + ")";
+                    text: @tr("Installed (") + root.installed-total + ")";
                     active: root.page == 0;
                     clicked => { root.open-page(0); }
                 }
                 TabButton {
-                    text: "Browse";
+                    text: @tr("Browse");
                     active: root.page == 1;
                     clicked => { root.open-page(1); }
                 }
                 TabButton {
-                    text: "Settings";
+                    text: @tr("Settings");
                     active: root.page == 2;
                     clicked => { root.open-page(2); }
                 }
                 // Game Mode has no title bar, so give it its own way out.
                 if root.game-mode : TabButton {
-                    text: "Quit";
+                    text: @tr("Quit");
                     clicked => { root.close-window(); }
                 }
             }
@@ -1059,7 +1090,7 @@ export component AppWindow inherits Window {
                     padding-right: 8px;
                     spacing: 16px;
                     Text {
-                        text: "SurvivorsForge " + root.self-update-version + " is available.";
+                        text: "SurvivorsForge " + root.self-update-version + @tr(" is available.");
                         font-size: Theme.body;
                         color: Theme.gold-bright;
                         vertical-alignment: center;
@@ -1068,7 +1099,7 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         alignment: center;
                         ActionButton {
-                            text: root.self-update-busy ? "Updating..." : root.self-update-in-place ? "Update and restart" : "Open download page";
+                            text: root.self-update-busy ? @tr("Updating...") : root.self-update-in-place ? @tr("Update and restart") : @tr("Open download page");
                             enabled: !root.self-update-busy;
                             clicked => { root.self-update(); }
                         }
@@ -1076,7 +1107,7 @@ export component AppWindow inherits Window {
                     if !root.self-update-busy : VerticalLayout {
                         alignment: center;
                         LinkButton {
-                            text: "Later";
+                            text: @tr("Later");
                             clicked => { root.self-update-later = true; }
                         }
                     }
@@ -1093,10 +1124,10 @@ export component AppWindow inherits Window {
                         spacing: Theme.gap-tight;
                         Field {
                             horizontal-stretch: 1;
-                            placeholder: "Search name or author";
-                            label: "Search addons";
+                            placeholder: @tr("Search name or author");
+                            label: @tr("Search addons");
                             clearable: true;
-                            clear-label: "Clear search";
+                            clear-label: @tr("Clear search");
                             focus-request: root.search-focus;
                             text <=> root.search;
                             edited(text) => { root.search-changed(text); }
@@ -1104,7 +1135,7 @@ export component AppWindow inherits Window {
                         // Icons named by their tooltips, as tall as the search field.
                         if root.page == 0 : GlyphButton {
                             height: Theme.touch ? 44px : 38px;
-                            label: root.checking ? "Checking for updates..." : "Check for updates";
+                            label: root.checking ? @tr("Checking for updates...") : @tr("Check for updates");
                             // Two arrows around a circle.
                             glyph: "M 13.5 8 A 5.5 5.5 0 1 1 11.6 3.8 M 12.2 1 L 12 4.2 L 8.8 4";
                             enabled: !root.checking;
@@ -1112,26 +1143,26 @@ export component AppWindow inherits Window {
                         }
                         if root.page == 0 && root.file-dialog : GlyphButton {
                             height: Theme.touch ? 44px : 38px;
-                            label: "Install zip";
+                            label: @tr("Install zip");
                             // An archive box with its lid and handle.
                             glyph: "M 2.5 6 L 13.5 6 L 13.5 14 L 2.5 14 Z M 1.5 2.5 L 14.5 2.5 L 14.5 6 L 1.5 6 Z M 6 9 L 10 9";
                             clicked => { root.install-zip(); }
                         }
                         if root.page == 0 : GlyphButton {
                             height: Theme.touch ? 44px : 38px;
-                            label: "Add GitHub repo";
+                            label: @tr("Add GitHub repo");
                             // A plus.
                             glyph: "M 8 2.5 L 8 13.5 M 2.5 8 L 13.5 8";
                             clicked => { root.add-repo(); }
                         }
                         if root.page == 0 && Theme.touch && root.update-count > 0 : ActionButton {
-                            text: "Update all (" + root.update-count + ")";
+                            text: @tr("Update all (") + root.update-count + ")";
                             primary: true;
                             clicked => { root.update-all(); }
                         }
                         if root.page == 0 && !(Theme.touch && root.update-count > 0) : GlyphButton {
                             height: Theme.touch ? 44px : 38px;
-                            label: root.update-count > 0 ? "Update all (" + root.update-count + ")" : root.checking ? "Update all" : "All up to date";
+                            label: root.update-count > 0 ? @tr("Update all (") + root.update-count + ")" : root.checking ? @tr("Update all") : @tr("All up to date");
                             // An arrow into a tray, or a tick when there is nothing to update.
                             glyph: root.update-count > 0 || root.checking ? "M 8 2 L 8 10.5 M 4.5 7 L 8 10.5 L 11.5 7 M 2.5 13.5 L 13.5 13.5" : "M 3 8.5 L 6.5 12 L 13 4.5";
                             badge: root.update-count > 0 ? root.update-count : "";
@@ -1147,7 +1178,7 @@ export component AppWindow inherits Window {
                         spacing: Theme.gap-tight;
                         Dropdown {
                             width: 220px;
-                            label: "Category";
+                            label: @tr("Category");
                             model: root.category-labels;
                             list-labels: root.category-list-labels;
                             levels: root.category-levels;
@@ -1156,14 +1187,14 @@ export component AppWindow inherits Window {
                         }
                         Dropdown {
                             width: 190px;
-                            label: "Safety check";
+                            label: @tr("Safety check");
                             model: root.safety-labels;
                             current-index <=> root.safety-index;
                             selected => { root.safety-changed(self.current-index); }
                         }
                         Dropdown {
                             width: 190px;
-                            label: "Sort by";
+                            label: @tr("Sort by");
                             model: root.sort-labels;
                             current-index <=> root.sort-index;
                             selected => { root.sort-changed(self.current-index); }
@@ -1280,18 +1311,26 @@ export component AppWindow inherits Window {
                         spacing: Theme.gap-tight;
                         Text {
                             horizontal-stretch: 1;
-                            text: "Offline: the SurvivorsForge server cannot be reached. Lists may be old and safety checks too; updates come straight from GitHub.";
+                            text: @tr("Offline: the SurvivorsForge server cannot be reached. Lists may be old and safety checks too; updates come straight from GitHub.");
                             font-size: Theme.meta;
                             color: Theme.warn;
                             wrap: word-wrap;
                             vertical-alignment: center;
                         }
                         LinkButton {
-                            text: "Try again";
+                            text: @tr("Try again");
                             clicked => { root.check-updates(); }
                         }
                     }
 
+                    if root.page == 0 && root.reborn-game && !root.showing-detail : Text {
+                        text: root.addon-switches-available
+                            ? @tr("Switches apply to all existing characters. Close the game before making changes.")
+                            : @tr("To switch addons, first enter the game with a character, close it, then check for updates.");
+                        font-size: Theme.meta;
+                        color: Theme.text-muted;
+                        wrap: word-wrap;
+                    }
                     if root.page == 0 && !root.showing-detail : ScrollPanel {
                         vertical-stretch: 1;
                         // Back from the details lands where the list was left.
@@ -1302,6 +1341,7 @@ export component AppWindow inherits Window {
                             remove(id) => { root.row-remove(id); }
                             open(id) => { root.row-open(id); }
                             details(id) => { root.row-details(id); }
+                            toggle(id) => { root.row-toggle(id); }
                         }
                         if !root.installed-tiles : VerticalLayout {
                             spacing: 6px;
@@ -1311,13 +1351,14 @@ export component AppWindow inherits Window {
                                 remove => { root.row-remove(row.id); }
                                 open => { root.row-open(row.id); }
                                 details => { root.row-details(row.id); }
+                                toggle => { root.row-toggle(row.id); }
                             }
                         }
                         if root.installed-rows.length == 0 : Text {
                             // The filters are shared with Browse, so they can hide everything here too.
-                            text: root.filtered ? "No installed addon matches the search and filters."
-                                : root.file-dialog ? "No addons installed yet. Browse the verified addons, install a zip or add a GitHub repo."
-                                : "No addons installed yet. Browse the verified addons or add a GitHub repo.";
+                            text: root.filtered ? @tr("No installed addon matches the search and filters.")
+                                : root.file-dialog ? @tr("No addons installed yet. Browse the verified addons, install a zip or add a GitHub repo.")
+                                : @tr("No addons installed yet. Browse the verified addons or add a GitHub repo.");
                             font-size: Theme.body;
                             color: Theme.text-muted;
                             wrap: word-wrap;
@@ -1326,7 +1367,7 @@ export component AppWindow inherits Window {
                         if root.installed-rows.length == 0 && root.filtered : HorizontalLayout {
                             alignment: center;
                             LinkButton {
-                                text: "Clear search and filters";
+                                text: @tr("Clear search and filters");
                                 clicked => { root.clear-filters(); }
                             }
                         }
@@ -1338,8 +1379,8 @@ export component AppWindow inherits Window {
                         spacing: 10px;
                         Text {
                             horizontal-stretch: 1;
-                            text: (root.picked-count == 1 ? "1 addon picked" : root.picked-count + " addons picked")
-                                + ": one zip with all of them, for the browser version of the game";
+                            text: (root.picked-count == 1 ? @tr("1 addon picked") : root.picked-count + @tr(" addons picked"))
+                                + @tr(": one zip with all of them, for the browser version of the game");
                             font-size: Theme.body;
                             color: Theme.gold;
                             vertical-alignment: center;
@@ -1347,20 +1388,20 @@ export component AppWindow inherits Window {
                         }
                         Rectangle { horizontal-stretch: 1; }
                         ActionButton {
-                            text: root.pack-busy ? "Packing..." : "Save as zip";
+                            text: root.pack-busy ? @tr("Packing...") : @tr("Save as zip");
                             primary: true;
                             enabled: !root.pack-busy;
                             clicked => { root.pack-save(); }
                         }
                         ActionButton {
-                            text: "Share as link";
+                            text: @tr("Share as link");
                             enabled: !root.pack-busy && !root.game-mode;
                             clicked => { root.pack-share(); }
                         }
                         VerticalLayout {
                             alignment: center;
                             LinkButton {
-                                text: "Clear";
+                                text: @tr("Clear");
                                 clicked => { root.pack-clear(); }
                             }
                         }
@@ -1375,6 +1416,7 @@ export component AppWindow inherits Window {
                             remove(id) => { root.row-remove(id); }
                             open(id) => { root.row-open(id); }
                             details(id) => { root.row-details(id); }
+                            toggle(id) => { root.row-toggle(id); }
                             pick(id) => { root.row-pick(id); }
                         }
                         if !root.browse-tiles : VerticalLayout {
@@ -1385,11 +1427,12 @@ export component AppWindow inherits Window {
                                 remove => { root.row-remove(row.id); }
                                 open => { root.row-open(row.id); }
                                 details => { root.row-details(row.id); }
+                                toggle => { root.row-toggle(row.id); }
                                 pick => { root.row-pick(row.id); }
                             }
                         }
                         if root.browse-rows.length == 0 : Text {
-                            text: root.search != "" ? "No addon matches \"" + root.search + "\"." : "No addon in this category with this safety check.";
+                            text: root.search != "" ? @tr("No addon matches \"") + root.search + "\"." : @tr("No addon in this category with this safety check.");
                             font-size: Theme.body;
                             color: Theme.text-muted;
                             wrap: word-wrap;
@@ -1398,7 +1441,7 @@ export component AppWindow inherits Window {
                         if root.browse-rows.length == 0 && root.filtered : HorizontalLayout {
                             alignment: center;
                             LinkButton {
-                                text: "Clear search and filters";
+                                text: @tr("Clear search and filters");
                                 clicked => { root.clear-filters(); }
                             }
                         }
@@ -1409,6 +1452,8 @@ export component AppWindow inherits Window {
                     if root.page == 2 : ScrollPanel {
                         vertical-stretch: 1;
                         SettingsView {
+                            language-index <=> root.language-index;
+                            language-changed(index) => { root.language-changed(index); }
                             path <=> root.settings-path;
                             game-versions: root.settings-game-versions;
                             checking: root.checking;
@@ -1452,7 +1497,7 @@ export component AppWindow inherits Window {
                 height: Theme.touch ? 44px : 22px;
                 spacing: 16px;
                 Text {
-                    text: "AddOns: " + root.addons-dir;
+                    text: @tr("AddOns: ") + root.addons-dir;
                     font-size: Theme.meta;
                     vertical-alignment: center;
                     color: Theme.text-muted;
@@ -1461,7 +1506,7 @@ export component AppWindow inherits Window {
                 }
                 // Game Mode has no file manager to show it in.
                 if !root.game-mode && root.addons-dir != "" : LinkButton {
-                    text: "Open folder";
+                    text: @tr("Open folder");
                     clicked => { root.open-addons-dir(); }
                 }
                 Text {
@@ -1502,9 +1547,9 @@ export component AppWindow inherits Window {
             width: parent.width;
             height: parent.height - root.title-height;
             DialogCard {
-                title: "Add GitHub Repo";
+                title: @tr("Add GitHub Repo");
                 Text {
-                    text: "SurvivorsForge checks the latest release, then the newest tag, then the default branch for an addon.";
+                    text: @tr("SurvivorsForge checks the latest release, then the newest tag, then the default branch for an addon.");
                     font-size: Theme.body;
                     color: Theme.text;
                     wrap: word-wrap;
@@ -1512,7 +1557,7 @@ export component AppWindow inherits Window {
                 Field {
                     text <=> root.repo-input;
                     placeholder: "owner/repo or https://github.com/owner/repo";
-                    label: "GitHub repo";
+                    label: @tr("GitHub repo");
                     enabled: !root.repo-busy;
                     init => { self.focus-input(); }
                     accepted => { root.repo-submit(); }
@@ -1527,12 +1572,12 @@ export component AppWindow inherits Window {
                     alignment: end;
                     spacing: Theme.gap-tight;
                     ActionButton {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         enabled: !root.repo-busy;
                         clicked => { root.repo-cancel(); }
                     }
                     ActionButton {
-                        text: root.repo-busy ? "Checking..." : "Check repo";
+                        text: root.repo-busy ? @tr("Checking...") : @tr("Check repo");
                         primary: true;
                         enabled: !root.repo-busy && root.repo-input != "";
                         clicked => { root.repo-submit(); }
@@ -1550,14 +1595,14 @@ export component AppWindow inherits Window {
                 title: root.comments-reply-to != "" ? "Reply to " + root.comments-reply-to : "New comment";
                 TextArea {
                     text <=> root.comments-draft;
-                    placeholder: root.comments-reply-to != "" ? "Your reply" : "Your comment";
-                    label: root.comments-reply-to != "" ? "Your reply" : "Your comment";
+                    placeholder: root.comments-reply-to != "" ? @tr("Your reply") : @tr("Your comment");
+                    label: root.comments-reply-to != "" ? @tr("Your reply") : @tr("Your comment");
                     enabled: !root.comments-sending;
                     init => { self.focus-input(); }
                     submitted => { if (!root.comments-sending) { root.comments-send(); } }
                 }
                 if root.comments-send-error != "" : Text {
-                    text: "Error: " + root.comments-send-error;
+                    text: @tr("Error: ") + root.comments-send-error;
                     font-size: Theme.meta;
                     color: Theme.danger;
                     wrap: word-wrap;
@@ -1565,24 +1610,24 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     spacing: Theme.gap-tight;
                     Text {
-                        text: "Ctrl+Enter sends. Edit or delete it later on the website.";
+                        text: @tr("Ctrl+Enter sends. Edit or delete it later on the website.");
                         font-size: Theme.meta;
                         color: Theme.text-muted;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
                     if root.comments-needs-login : ActionButton {
-                        text: "Log in again";
+                        text: @tr("Log in again");
                         enabled: !root.game-mode;
                         clicked => { root.login(); }
                     }
                     ActionButton {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         enabled: !root.comments-sending;
                         clicked => { root.comments-cancel-reply(); }
                     }
                     ActionButton {
-                        text: root.comments-sending ? "Sending" : root.comments-reply-to != "" ? "Send reply" : "Send";
+                        text: root.comments-sending ? @tr("Sending") : root.comments-reply-to != "" ? @tr("Send reply") : @tr("Send");
                         primary: true;
                         enabled: !root.comments-sending && root.comments-draft != "";
                         clicked => { root.comments-send(); }
@@ -1616,7 +1661,7 @@ export component AppWindow inherits Window {
                     alignment: end;
                     spacing: Theme.gap-tight;
                     if !root.confirm-info : ActionButton {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         // Return on a dangerous question keeps things as they are.
                         init => {
                             if (root.confirm-danger) {
