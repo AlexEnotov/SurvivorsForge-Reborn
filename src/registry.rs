@@ -44,6 +44,10 @@ pub struct VerifiedAddon {
     pub latest: Option<CatalogRelease>,
     #[serde(default)]
     pub icon_url: Option<String>,
+    #[serde(default)]
+    pub added_at: u64,
+    #[serde(default)]
+    pub trust: String,
 }
 
 /// Exact artifact reviewed by the independent Reborn catalog generator.

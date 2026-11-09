@@ -19,6 +19,7 @@ use survivorsforge::updates::{self, RemoteVersion, UpdateStatus};
 use survivorsforge::{archive, unique_name, Error, APP_VERSION};
 
 slint::include_modules!();
+mod keyboard;
 #[cfg(test)]
 mod ui_preview;
 
@@ -132,6 +133,13 @@ impl Core {
                 }
                 self.reconciled = self.state.reconcile(&scan);
                 self.scan = scan;
+                let mut changed = false;
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+                for row in controller::installed_rows(&self.state, &self.reconciled, &self.scan, &self.registry, &self.statuses) {
+                    let installed = self.state.get(&row.id).map(|e| e.installed_at).unwrap_or(0);
+                    changed |= self.config.observe_addon(&row.id, installed, now);
+                }
+                if changed { let _ = self.config.save(&self.data_dir); }
                 self.reload_icons();
             }
             Err(e) => self.set_status(format!("Cannot read the AddOns folder: {e}"), true),
@@ -189,6 +197,18 @@ fn icon_image(pixels: Option<&survivorsforge::icons::Pixels>) -> slint::Image {
     pixels.map(|p| slint::Image::from_rgba8(slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(&p.rgba,p.width,p.height))).unwrap_or_default()
 }
 
+fn catalog_badge(addon: Option<&registry::VerifiedAddon>, language: &str) -> String {
+    survivorsforge::i18n::text(language, match addon.map(|a| a.trust.as_str()) {
+        Some("verified") => "Verified", Some("scanned") => "Scanned", Some("flagged") => "Flagged", _ => "Catalog"
+    })
+}
+
+fn version_label(version: &str, language: &str) -> String {
+    if version.is_empty() || version.contains('@') || version == "unknown" {
+        survivorsforge::i18n::text(language,"Version not specified")
+    } else { format!("{} {}",survivorsforge::i18n::text(language,"Version"),version) }
+}
+
 fn installed_row(row: &Row, core: &Core) -> AddonRow {
     let (status, kind, action) = match &row.state {
         RowState::Unchecked => (if core.checking { "Checking..." } else { "Not checked" }.to_string(), 0, ""),
@@ -210,8 +230,9 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
         name: row.name.clone().into(),
         initial: initial(&row.name),
         author: row.author.clone().into(),
-        version: row.version.clone().into(),
-        badge: survivorsforge::i18n::text(&core.config.language, row.badge.label()).into(),
+        version: version_label(&row.version,&core.config.language).into(),
+        badge: if row.badge == Badge::Verified { catalog_badge(core.registry.get(&row.id),&core.config.language) } else { survivorsforge::i18n::text(&core.config.language, row.badge.label()) }.into(),
+        badge_verified: row.badge == Badge::Verified && core.registry.get(&row.id).is_some_and(|a| a.trust == "verified"),
         description: row.description.clone().into(),
         status: survivorsforge::i18n::text(&core.config.language, &status).into(),
         status_kind: kind,
@@ -228,7 +249,11 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
 
 fn refresh(ui: &AppWindow, shared: &Shared) {
     let core = lock(shared);
-    let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+    let mut rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+    let date = |row: &Row| core.config.observed_at(&row.id);
+    rows.sort_by(|a,b| controller::compare_listing(core.config.sort_order, &a.name, &a.author, date(a), matches!(a.state,RowState::UpdateAvailable(_)), &b.name, &b.author, date(b), matches!(b.state,RowState::UpdateAvailable(_))).then_with(|| a.id.cmp(&b.id)));
+    ui.set_sort_order(core.config.sort_order.min(5) as i32);
+    ui.set_tile_view(core.config.tile_view);
     ui.set_operations_running(!core.busy.is_empty());
     ui.set_installed_total(rows.len() as i32);
     ui.set_language_index(survivorsforge::i18n::index(&core.config.language));
@@ -248,7 +273,9 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
             .collect(),
     ));
     ui.set_browse_rows(model(
-        controller::browse_rows(&core.registry, &core.state)
+        { let mut browse = controller::browse_rows(&core.registry, &core.state);
+          browse.sort_by(|a,b| controller::compare_listing(core.config.sort_order, &a.name, &a.author, core.registry.get(&a.id).map(|r| r.added_at).unwrap_or(0), false, &b.name, &b.author, core.registry.get(&b.id).map(|r| r.added_at).unwrap_or(0), false).then_with(|| a.id.cmp(&b.id)));
+          browse }
             .into_iter()
             .filter(|b| controller::matches(&core.search, &b.name, &b.author))
             .map(|b| AddonRow {
@@ -257,8 +284,9 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
                 id: b.id.clone().into(),
                 name: b.name.into(),
                 author: b.author.into(),
-                version: SharedString::new(),
-                badge: b.category.into(),
+                version: version_label(core.registry.get(&b.id).and_then(|a| a.latest.as_ref()).map(|r| r.version.as_str()).unwrap_or(""),&core.config.language).into(),
+                badge: catalog_badge(core.registry.get(&b.id), &core.config.language).into(),
+                badge_verified: core.registry.get(&b.id).is_some_and(|a| a.trust == "verified"),
                 description: b.description.into(),
                 status: if b.installed { "Installed" } else { "" }.into(),
                 status_kind: if b.installed { 1 } else { 0 },
@@ -935,6 +963,7 @@ fn main() -> Result<(), slint::PlatformError> {
     let shared: Shared = Arc::new(Mutex::new(Core::new(data_dir, config)));
 
     let ui = AppWindow::new()?;
+    keyboard::install(ui.window());
     let language = lock(&shared).config.language.clone();
     let _ = slint::select_bundled_translation(&language);
     if let Some(saved) = &lock(&shared).config.window {
@@ -1079,6 +1108,14 @@ fn main() -> Result<(), slint::PlatformError> {
     on!(on_repo_cancel, |ui, _shared| ui.set_repo_open(false));
     on!(on_repo_submit, |ui, shared| on_repo_submit(&ui, shared));
     on!(on_list_filter_changed, |ui, shared, filter| { lock(shared).list_filter = filter; refresh(&ui, shared); });
+    on!(on_sort_changed, |ui, shared, order| {
+        { let mut core=lock(shared); core.config.sort_order=order.clamp(0,5) as u8; let _=core.config.save(&core.data_dir); }
+        refresh(&ui,shared);
+    });
+    on!(on_view_changed, |ui, shared, tiles| {
+        { let mut core=lock(shared); core.config.tile_view=tiles; let _=core.config.save(&core.data_dir); }
+        refresh(&ui,shared);
+    });
     on!(on_copy_status, |ui, shared| {
         match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(ui.get_status_text().to_string())) {
             Ok(()) => ui.set_status_copied(true),
@@ -1094,7 +1131,7 @@ fn main() -> Result<(), slint::PlatformError> {
             ui.set_detail_folders(ModelRc::new(VecModel::from(row.folders.iter().map(|f| SharedString::from(f.as_str())).collect::<Vec<_>>())));
             ui.set_details_open(true);
         } else if let Some(addon)=core.registry.get(&id) {
-            ui.set_detail_addon(AddonRow { id:addon.id.clone().into(),name:addon.name.clone().into(),initial:initial(&addon.name),author:addon.author.clone().into(),version:addon.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default().into(),description:addon.description.clone().into(),badge:addon.category.clone().into(),icon:icon_image(core.icons.get(&addon.id)),can_open:true,..Default::default() });
+            ui.set_detail_addon(AddonRow { id:addon.id.clone().into(),name:addon.name.clone().into(),initial:initial(&addon.name),author:addon.author.clone().into(),version:version_label(addon.latest.as_ref().map(|r| r.version.as_str()).unwrap_or(""),&core.config.language).into(),description:addon.description.clone().into(),badge:catalog_badge(Some(addon),&core.config.language).into(),icon:icon_image(core.icons.get(&addon.id)),can_open:true,..Default::default() });
             ui.set_detail_repo(addon.repo.clone().into());
             ui.set_detail_folders(ModelRc::new(VecModel::from(addon.folders.iter().map(|f| SharedString::from(f.as_str())).collect::<Vec<_>>())));
             ui.set_details_open(true);

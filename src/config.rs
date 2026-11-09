@@ -11,6 +11,13 @@ pub struct Config {
     pub language: String,
     #[serde(default)]
     pub window: Option<WindowState>,
+    #[serde(default)]
+    pub sort_order: u8,
+    #[serde(default)]
+    pub tile_view: bool,
+    /// First observation times, scoped to the selected game folder and addon id.
+    #[serde(default)]
+    pub first_seen: std::collections::BTreeMap<String, u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -33,9 +40,23 @@ pub fn data_dir() -> PathBuf {
 }
 
 fn default_language() -> String { "en".into() }
-impl Default for Config { fn default() -> Self { Self { addons_dir: PathBuf::new(), language: default_language(), window: None } } }
+impl Default for Config { fn default() -> Self { Self { addons_dir: PathBuf::new(), language: default_language(), window: None, sort_order: 0, tile_view: false, first_seen: Default::default() } } }
 
 impl Config {
+    fn observation_key(&self, id: &str) -> String {
+        let scope = self.addons_dir.to_string_lossy();
+        format!("{}|{}", if cfg!(windows) { scope.to_lowercase() } else { scope.into_owned() }, id.to_lowercase())
+    }
+
+    pub fn observed_at(&self, id: &str) -> u64 { self.first_seen.get(&self.observation_key(id)).copied().unwrap_or(0) }
+
+    pub fn observe_addon(&mut self, id: &str, installed_at: u64, now: u64) -> bool {
+        let key = self.observation_key(id);
+        if self.first_seen.contains_key(&key) { return false; }
+        self.first_seen.insert(key, if installed_at > 0 { installed_at } else { now });
+        true
+    }
+
     pub fn load(dir: &Path) -> Option<Config> {
         let text = std::fs::read_to_string(dir.join(FILE)).ok()?;
         serde_json::from_str(&text).ok()
@@ -179,6 +200,24 @@ pub fn validate_addons_dir(path: &Path) -> Result<Option<DirWarning>, DirError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observation_dates_survive_updates_and_are_scoped_to_the_game_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config { addons_dir: PathBuf::from("Game-A/AddOns"), sort_order: 3, tile_view: true, ..Config::default() };
+        assert!(config.observe_addon("example", 100, 200));
+        assert!(!config.observe_addon("example", 300, 400));
+        assert_eq!(config.observed_at("example"), 100);
+        config.addons_dir = PathBuf::from("Game-B/AddOns");
+        assert_eq!(config.observed_at("example"), 0);
+        assert!(config.observe_addon("example", 0, 500));
+        config.save(dir.path()).unwrap();
+        let loaded = Config::load(dir.path()).unwrap();
+        assert_eq!(loaded.observed_at("example"), 500);
+        assert_eq!(loaded.sort_order, 3); assert!(loaded.tile_view);
+        let old: Config = serde_json::from_str(r#"{"addons_dir":"Game/AddOns"}"#).unwrap();
+        assert_eq!(old.sort_order,0); assert!(!old.tile_view);
+    }
 
     #[test]
     fn suggests_existing_addon_dirs() {

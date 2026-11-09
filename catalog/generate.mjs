@@ -111,7 +111,7 @@ export async function generate(manifestDir, outputDir, scanner, transport = requ
     const old = previous.addons.find(a=>a.id===id);
     // Keep the counter snapshot for an unchanged artifact so hourly runs are idempotent.
     const downloads = old?.latest?.sha256 === sha256 ? old.downloads : asset.download_count;
-    addons.push({id,name:manifest.name,author:manifest.author ?? repo.owner.login,repo:manifest.repo,description:manifest.description ?? repo.description ?? '',category:manifest.category,folders:manifest.folders,icon_url:iconUrl(manifest.repo,repo.default_branch,manifest.icon),source:{type:'release',asset:manifest.asset},trust,downloads,latest:{tag:release.tag_name,asset_url:asset.browser_download_url,sha256,size,trust,findings:report.findings,published_at:release.published_at}});
+    addons.push({added_at:old?.added_at || Math.floor(Date.now()/1000),id,name:manifest.name,author:manifest.author ?? repo.owner.login,repo:manifest.repo,description:manifest.description ?? repo.description ?? '',category:manifest.category,folders:manifest.folders,icon_url:iconUrl(manifest.repo,repo.default_branch,manifest.icon),source:{type:'release',asset:manifest.asset},trust,downloads,latest:{tag:release.tag_name,asset_url:asset.browser_download_url,sha256,size,trust,findings:report.findings,published_at:release.published_at}});
   }
   const v1 = path.join(outputDir,'v1'); await fs.mkdir(v1,{recursive:true});
   for (const [name,value] of Object.entries({registry:{schema:1,addons},categories:[...new Set(addons.map(a=>a.category))].sort(),'game-versions':['11200','30300']})) {

@@ -10,6 +10,17 @@ Updated 2026-11-09. Native Slint interface; dark blue theme, Segoe UI.
   and on the first-run screen.
 - Installed: search, All/Enabled/Disabled/Updates filters, cards with source,
   version, status, explicit switches and separate update/remove actions.
+- Installed and Catalog support responsive tiles and a compact list. Each card
+  shows its version (or an explicit missing-version label), with the source/trust
+  badge immediately after the name. Click a card to open details; source and trash
+  icons on the right act independently of this click target.
+- Six saved sort choices: newest added (default), oldest added, name ascending,
+  name descending, author and updates first. Installed dates are remembered from
+  the install time or first observation, scoped to each game folder, and do not
+  change when an addon is updated. Pre-existing untracked addons have no reliable
+  historical installation date; ties use the name. Catalog `added_at` is recorded
+  on first generation and preserved on subsequent runs. Unknown catalog dates
+  sort after known dates. View and sort choices are saved in local configuration.
 - A compact GitHub button appears when a repository is known from the install
   source, catalog or explicit GitHub URL in local TOC metadata (Website,
   X-Website, X-GitHub, X-GitHub-Repo, X-Repository or X-Source). A local source
@@ -55,6 +66,9 @@ English remains the default; Russian and German use bundled translations.
 - F5: check updates. Ctrl+U: update all.
 - Escape: close the current dialog or clear search.
 - Tab, Space and Enter: reach and activate controls.
+- Ctrl+C/V/X/A/Z/Y and app shortcuts work with non-Latin keyboard layouts. Latin
+  layout shortcuts retain their native behaviour (including German Z/Y), and
+  AltGr combinations remain text input. Command is used on macOS.
 
 ## Offline verification
 

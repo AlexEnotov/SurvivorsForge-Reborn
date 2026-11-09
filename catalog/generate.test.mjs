@@ -74,6 +74,7 @@ test('generates a scanned artifact with stable SHA-256 using the real local scan
     await generate(manifests,output,process.env.FORGE_SCAN,transport);
     const first=await fs.readFile(path.join(output,'v1/registry'),'utf8');
     const addon=JSON.parse(first).addons[0];
+    assert.ok(Number.isSafeInteger(addon.added_at) && addon.added_at > 0);
     assert.equal(addon.icon_url,'https://raw.githubusercontent.com/example/addon/main/assets/icon.png');
     if (process.env.REBORN_MANAGER_CHECK) {
       const {spawnSync}=await import('node:child_process');
@@ -87,5 +88,9 @@ test('generates a scanned artifact with stable SHA-256 using the real local scan
     downloads=9;
     await generate(manifests,output,process.env.FORGE_SCAN,transport);
     assert.equal(await fs.readFile(path.join(output,'v1/registry'),'utf8'),first);
+    const previous=JSON.parse(first); previous.addons[0].added_at=123;
+    await fs.writeFile(path.join(output,'v1/registry'),JSON.stringify(previous));
+    await generate(manifests,output,process.env.FORGE_SCAN,transport);
+    assert.equal(JSON.parse(await fs.readFile(path.join(output,'v1/registry'),'utf8')).addons[0].added_at,123);
   } finally {await fs.rm(temp,{recursive:true,force:true});}
 });

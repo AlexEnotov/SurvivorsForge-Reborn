@@ -4,9 +4,15 @@ use slint::platform::{Platform, WindowAdapter};
 use slint::{ComponentHandle, Rgb8Pixel};
 use std::rc::Rc;
 
-struct Software(Rc<MinimalSoftwareWindow>);
+struct Software(Rc<MinimalSoftwareWindow>,Rc<std::cell::RefCell<String>>);
 impl Platform for Software {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> { Ok(self.0.clone()) }
+    fn set_clipboard_text(&self,text:&str,clipboard:slint::platform::Clipboard) {
+        if matches!(clipboard,slint::platform::Clipboard::DefaultClipboard) { *self.1.borrow_mut()=text.into(); }
+    }
+    fn clipboard_text(&self,clipboard:slint::platform::Clipboard) -> Option<String> {
+        if matches!(clipboard,slint::platform::Clipboard::DefaultClipboard) { Some(self.1.borrow().clone()) } else { None }
+    }
 }
 fn save(window: &MinimalSoftwareWindow, name: &str, width: u32, height: u32) {
     window.set_size(slint::PhysicalSize::new(width,height));
@@ -24,7 +30,8 @@ fn save(window: &MinimalSoftwareWindow, name: &str, width: u32, height: u32) {
 #[ignore = "Offline visual capture; run separately with --ignored"]
 fn capture_ui() {
     let window=MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
-    slint::platform::set_platform(Box::new(Software(window.clone()))).unwrap();
+    let clipboard=Rc::new(std::cell::RefCell::new(String::new()));
+    slint::platform::set_platform(Box::new(Software(window.clone(),clipboard.clone()))).unwrap();
     let ui=crate::AppWindow::new().unwrap();
     let _=slint::select_bundled_translation("en");
     ui.set_app_version("0.1.0".into());
@@ -43,9 +50,9 @@ fn capture_ui() {
     }
     let sample_icon=slint::Image::from_rgba8(art);
     let row=|id:&str,name:&str,status:&str,kind:i32,action:&str,switch:&str| crate::AddonRow {
-        icon:if id=="a" {sample_icon.clone()} else {slint::Image::default()},
+        badge_verified:id=="a",icon:if id=="a" {sample_icon.clone()} else {slint::Image::default()},
         id:id.into(),name:name.into(),initial:name[..1].into(),author:"Sample author".into(),
-        version:"v1.2.0".into(),badge:"GitHub".into(),description:"A sample addon used only in this offline interface preview.".into(),
+        version:"Version v1.2.0".into(),badge:if id == "a" { "Verified".into() } else { "GitHub".into() },description:"A sample addon used only in this offline interface preview.".into(),
         status:status.into(),status_kind:kind,action:action.into(),switch_label:switch.into(),disabled:switch=="Enable",can_remove:true,can_open:true,
         ..Default::default()
     };
@@ -66,11 +73,25 @@ fn capture_ui() {
         ui.window().dispatch_event(WindowEvent::PointerPressed{position,button:PointerEventButton::Left});
         ui.window().dispatch_event(WindowEvent::PointerReleased{position,button:PointerEventButton::Left});
     };
-    click(1100.0,329.0); assert!(toggled.get(),"The visible switch invokes its addon callback");
+    let details=Rc::new(std::cell::RefCell::new(Vec::new()));
+    let seen=details.clone(); ui.on_row_details(move |id| seen.borrow_mut().push(id.to_string()));
+    click(610.0,315.0); assert_eq!(*details.borrow(),vec!["a"],"Clicking the card opens addon details");
+    click(1030.0,363.0); assert!(toggled.get(),"The visible switch invokes its addon callback");
     let opened=Rc::new(std::cell::RefCell::new(String::new()));
     let seen=opened.clone(); ui.on_row_open(move |id| *seen.borrow_mut()=id.to_string());
-    click(414.0,325.0);
+    click(1073.0,363.0);
     assert_eq!(*opened.borrow(),"a","The compact GitHub button opens the selected addon's source");
+    let removed=Rc::new(std::cell::RefCell::new(String::new()));
+    let seen=removed.clone(); ui.on_row_remove(move |id| *seen.borrow_mut()=id.to_string());
+    click(1107.0,363.0); assert_eq!(*removed.borrow(),"a","The trash icon invokes removal for this addon");
+    assert_eq!(details.borrow().len(),1,"Card actions do not also open the details dialog");
+    click(340.0,196.0); save(&window,"sort-menu",1180,800);
+    click(340.0,303.0); assert_eq!(ui.get_sort_order(),2,"The sort menu selects name ordering");
+    click(1138.0,196.0); assert!(ui.get_tile_view(),"The view selector opens tiles");
+    save(&window,"installed-tiles",1180,800);
+    save(&window,"tiles-compact",980,660);
+    ui.set_tile_view(false); save(&window,"installed-compact",980,660);
+    save(&window,"installed",1180,800);
     let launches=Rc::new(std::cell::RefCell::new(Vec::new()));
     let seen=launches.clone(); ui.on_launch_game(move |checked| seen.borrow_mut().push(checked));
     click(100.0,630.0); click(100.0,668.0);
@@ -95,15 +116,28 @@ fn capture_ui() {
     press("f".into());
     ui.window().dispatch_event(WindowEvent::KeyReleased{text:slint::platform::Key::Control.into()});
     press("meter".into()); assert_eq!(ui.get_search().as_str(),"meter","Ctrl+F focuses the search field");
+    ui.window().dispatch_event(WindowEvent::KeyPressed{text:slint::platform::Key::Control.into()});
+    let russian_shortcut=|code,logical| {
+        use slint::winit_030::winit::keyboard::{ModifiersState,PhysicalKey};
+        let modifiers=if cfg!(target_os="macos") {ModifiersState::SUPER} else {ModifiersState::CONTROL};
+        press(crate::keyboard::shortcut_text(PhysicalKey::Code(code),modifiers,Some(logical)).unwrap().into());
+    };
+    use slint::winit_030::winit::keyboard::KeyCode;
+    russian_shortcut(KeyCode::KeyA,"ф"); russian_shortcut(KeyCode::KeyC,"с"); assert_eq!(*clipboard.borrow(),"meter","Copy in the Russian layout uses the focused input's selection");
+    russian_shortcut(KeyCode::KeyX,"ч"); assert!(ui.get_search().is_empty(),"Cut removes the selected input text");
+    russian_shortcut(KeyCode::KeyV,"м"); assert_eq!(ui.get_search().as_str(),"meter","Paste in the Russian layout restores the input text");
+    ui.window().dispatch_event(WindowEvent::KeyReleased{text:slint::platform::Key::Control.into()});
     press(slint::platform::Key::Escape.into()); assert!(ui.get_search().is_empty(),"Escape clears search");
     ui.set_page(2); save(&window,"settings",1180,800);
     save(&window,"settings-compact",980,660);
     let _=slint::select_bundled_translation("ru"); ui.set_language_index(1);
+    ui.set_page(0); ui.set_tile_view(true); save(&window,"tiles-ru",980,660); ui.set_tile_view(false); ui.set_page(2);
     save(&window,"settings-ru",980,660);
     let position=slint::LogicalPosition::new(700.0,400.0);
     ui.window().dispatch_event(WindowEvent::PointerScrolled{position,delta_x:0.0,delta_y:-600.0});
     save(&window,"settings-ru-scrolled",980,660);
     let _=slint::select_bundled_translation("de"); ui.set_language_index(2);
+    ui.set_page(0); ui.set_tile_view(true); save(&window,"tiles-de",980,660); ui.set_tile_view(false); ui.set_page(2);
     save(&window,"settings-de",980,660);
     ui.set_page(0); save(&window,"installed-de",980,660);
     let _=slint::select_bundled_translation("en"); ui.set_language_index(0);

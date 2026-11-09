@@ -58,6 +58,21 @@ fn reborn_out_of_date(toc: &crate::toc::Toc) -> bool {
 
 pub const UNMANAGED_PREFIX: &str = "folder:";
 
+/// Shared, stable ordering for installed addons and catalog entries. Zero dates sort last.
+pub fn compare_listing(order: u8, name_a: &str, author_a: &str, date_a: u64, update_a: bool,
+    name_b: &str, author_b: &str, date_b: u64, update_b: bool) -> std::cmp::Ordering {
+    let names = || name_a.to_lowercase().cmp(&name_b.to_lowercase());
+    match order {
+        0 => date_b.cmp(&date_a).then_with(names),
+        1 => (date_a == 0).cmp(&(date_b == 0)).then_with(|| date_a.cmp(&date_b)).then_with(names),
+        2 => names(),
+        3 => names().reverse(),
+        4 => author_a.to_lowercase().cmp(&author_b.to_lowercase()).then_with(names),
+        5 => update_b.cmp(&update_a).then_with(names),
+        _ => names(),
+    }
+}
+
 /// A source link is informational; it does not enrol a local addon in updates.
 fn toc_repo(toc: &crate::toc::Toc) -> Option<String> {
     toc.source_urls.iter().find_map(|raw| {
@@ -287,6 +302,18 @@ mod tests {
     use crate::state::Entry;
     use crate::toc::Toc;
     use crate::updates::RemoteVersion;
+
+    #[test]
+    fn listing_sorts_dates_names_authors_and_updates_without_promoting_updates_by_default() {
+        use std::cmp::Ordering::{Less,Greater};
+        assert_eq!(compare_listing(0,"New","A",200,false,"Old","B",100,true),Less);
+        assert_eq!(compare_listing(1,"New","A",200,false,"Old","B",100,true),Greater);
+        assert_eq!(compare_listing(1,"Unknown","A",0,false,"Old","B",100,true),Greater);
+        assert_eq!(compare_listing(2,"alpha","Z",0,false,"Beta","A",0,false),Less);
+        assert_eq!(compare_listing(3,"alpha","Z",0,false,"Beta","A",0,false),Greater);
+        assert_eq!(compare_listing(4,"alpha","Z",0,false,"Beta","A",0,false),Greater);
+        assert_eq!(compare_listing(5,"New","A",200,false,"Old","B",100,true),Greater);
+    }
 
     fn scanned(folder: &str) -> InstalledAddon {
         InstalledAddon { disabled: false, folder: folder.into(), toc: Toc { title: folder.into(), ..Toc::default() } }

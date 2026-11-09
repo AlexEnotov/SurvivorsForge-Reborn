@@ -528,12 +528,12 @@
     "Addons werden installiert..."
   ],
   "Verified": [
-    "Подтверждён",
-    "Bestätigt"
+    "Проверен",
+    "Verifiziert"
   ],
   "Scanned": [
-    "Проверен сканером",
-    "Gescannt"
+    "Просканирован",
+    "Geprüft"
   ],
   "Flagged": [
     "Есть замечания",
@@ -1430,5 +1430,37 @@
   "View on GitHub": [
     "Открыть на GitHub",
     "Auf GitHub ansehen"
+  ],
+  "Updates first": [
+    "Сначала обновления",
+    "Updates zuerst"
+  ],
+  "Name: A–Z": [
+    "Название: А–Я",
+    "Name: A–Z"
+  ],
+  "Recently added": [
+    "Сначала новые",
+    "Zuletzt hinzugefügt"
+  ],
+  "Name: Z–A": [
+    "Название: Я–А",
+    "Name: Z–A"
+  ],
+  "Sort": [
+    "Сортировка",
+    "Sortierung"
+  ],
+  "Author": [
+    "Автор",
+    "Autor"
+  ],
+  "Oldest first": [
+    "Сначала старые",
+    "Älteste zuerst"
+  ],
+  "Version not specified": [
+    "Версия не указана",
+    "Version nicht angegeben"
   ]
 }

@@ -9,6 +9,7 @@ export struct AddonRow {
     author: string,
     version: string,
     badge: string,
+    badge-verified: bool,
     description: string,
     status: string,
     // 0 neutral, 1 ok, 2 update available, 3 error
@@ -279,11 +280,12 @@ export component ScrollPanel inherits Rectangle {
 
 component Pill inherits Rectangle {
     in property <string> text;
+    in property <bool> verified;
     height: 20px;
     width: label.preferred-width + 16px;
     border-radius: 10px;
     border-width: 1px;
-    border-color: Theme.outline;
+    border-color: root.verified ? Theme.ok : Theme.outline;
     label := Text {
         width: parent.width;
         height: parent.height;
@@ -291,18 +293,46 @@ component Pill inherits Rectangle {
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
-        color: Theme.accent;
+        color: root.verified ? Theme.ok : Theme.accent;
     }
+}
+
+component AddonHeading inherits Rectangle {
+    in property <string> name;
+    in property <string> badge;
+    in property <bool> verified;
+    in property <bool> muted;
+    in property <length> size: 17px;
+    callback clicked();
+    height: 24px; min-width: 0px; preferred-width: 0px; horizontal-stretch: 1;
+    title := Text { x: 0px; y: 0px; width: min(self.preferred-width, max(32px, root.width - flag.width - 8px)); height: parent.height; text: root.name; color: root.muted ? Theme.text-muted : Theme.text; font-size: root.size; font-weight: 600; overflow: elide; vertical-alignment: center; }
+    flag := Pill { x: title.width + 8px; y: 2px; text: root.badge; verified: root.verified; visible: root.badge != ""; }
+    TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> label;
+    in property <image> source;
+    in property <bool> danger;
+    in property <bool> active;
+    callback clicked();
+    width: 28px; height: 28px; border-radius: 7px; border-width: 1px;
+    border-color: focus.has-focus || root.active ? Theme.accent : touch.has-hover && root.danger ? Theme.danger : Theme.outline;
+    background: root.active ? Theme.primary : touch.has-hover ? Theme.control : Theme.row;
+    accessible-role: button; accessible-label: root.label; accessible-action-default => { root.clicked(); }
+    Image { x: 6px; y: 6px; width: 16px; height: 16px; source: root.source; image-fit: contain; }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    focus := FocusScope { width: 0px; height: 0px; key-pressed(event) => { if event.text == " " || event.text == Key.Return { root.clicked(); return accept; } reject } }
 }
 
 export component AddonRowView inherits Rectangle {
     in property <AddonRow> addon;
     callback action(); callback toggle(); callback remove(); callback open(); callback details();
-    height: root.addon.warning != "" ? 146px : 118px;
+    height: root.addon.warning != "" || root.addon.action != "" ? 112px : 92px;
     border-radius: 12px; border-width: 1px;
     border-color: root.addon.status-kind == 2 ? #36598C : hover.has-hover ? Theme.outline : Theme.line;
     background: hover.has-hover ? Theme.row-hover : Theme.row;
-    hover := TouchArea { }
+    hover := TouchArea { mouse-cursor: pointer; clicked => { root.details(); } }
     HorizontalLayout {
         padding: 14px; spacing: 14px;
         VerticalLayout {
@@ -311,32 +341,92 @@ export component AddonRowView inherits Rectangle {
         }
         VerticalLayout {
             alignment: center; spacing: 4px; horizontal-stretch: 1;
-            HorizontalLayout {
-                spacing: 8px;
-                Rectangle {
-                    horizontal-stretch: 1; height: 24px;
-                    Text { width: parent.width; height: parent.height; horizontal-alignment: left; text: root.addon.name; color: root.addon.disabled ? Theme.text-muted : Theme.text; font-size: 17px; font-weight: 600; vertical-alignment: center; overflow: elide; }
-                    TouchArea { mouse-cursor: pointer; clicked => { root.details(); } }
-                }
-                if root.addon.badge != "" : Pill { text: root.addon.badge; }
-            }
+            AddonHeading { name: root.addon.name; badge: root.addon.badge; verified: root.addon.badge-verified; muted: root.addon.disabled; clicked => { root.details(); } }
             Text { text: root.addon.version + (root.addon.author != "" ? (root.addon.version != "" ? "  ·  " : "") + root.addon.author : ""); color: Theme.text-muted; font-size: Theme.meta; overflow: elide; }
             Text { text: root.addon.warning != "" ? root.addon.warning : root.addon.description; color: root.addon.warning != "" ? Theme.warn : Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; overflow: elide; max-height: root.addon.warning != "" ? 45px : 18px; }
-            HorizontalLayout {
-                spacing: 12px; alignment: start;
-                LinkButton { text: @tr("Details"); clicked => { root.details(); } }
-                if root.addon.can-open : ActionButton { height: 22px; text: "GitHub ↗"; clicked => { root.open(); } }
-                if root.addon.can-remove && !root.addon.busy : LinkButton { text: @tr("Remove"); danger: true; clicked => { root.remove(); } }
-            }
         }
         VerticalLayout {
-            alignment: center; spacing: 10px; width: 136px;
+            alignment: center; spacing: 6px; width: 190px;
             Text { text: root.addon.busy ? @tr("Working...") : root.addon.status; color: root.addon.status-kind == 2 ? Theme.warn : root.addon.status-kind == 1 ? Theme.ok : root.addon.status-kind == 3 ? Theme.danger : Theme.text-muted; font-size: Theme.meta; horizontal-alignment: right; overflow: elide; }
-            if root.addon.action != "" : ActionButton { text: root.addon.action; primary: root.addon.status-kind == 2; enabled: !root.addon.busy; clicked => { root.action(); } }
-            if root.addon.switch-label != "" : HorizontalLayout {
-                alignment: end; spacing: 8px;
-                Text { text: root.addon.mixed ? @tr("Mixed") : root.addon.disabled ? @tr("Disabled") : @tr("Enabled"); font-size: Theme.meta; color: root.addon.disabled ? Theme.text-muted : Theme.text; vertical-alignment: center; }
-                AddonSwitch { on: !root.addon.disabled && !root.addon.mixed; mixed: root.addon.mixed; label: root.addon.switch-label + " " + root.addon.name; enabled: !root.addon.busy; clicked => { root.toggle(); } }
+            if root.addon.action != "" : HorizontalLayout { alignment: end;
+                ActionButton { width: 100px; text: root.addon.action; primary: root.addon.status-kind == 2; enabled: !root.addon.busy; clicked => { root.action(); } }
+            }
+            HorizontalLayout {
+                alignment: end; spacing: 6px;
+                if root.addon.switch-label != "" : Text { text: root.addon.mixed ? @tr("Mixed") : root.addon.disabled ? @tr("Disabled") : @tr("Enabled"); font-size: Theme.meta; color: root.addon.disabled ? Theme.text-muted : Theme.text; vertical-alignment: center; }
+                if root.addon.switch-label != "" : AddonSwitch { on: !root.addon.disabled && !root.addon.mixed; mixed: root.addon.mixed; label: root.addon.switch-label + " " + root.addon.name; enabled: !root.addon.busy; clicked => { root.toggle(); } }
+                if root.addon.can-open : IconButton { label: "GitHub"; source: @image-url("../assets/ui/source.svg"); clicked => { root.open(); } }
+                if root.addon.can-remove && !root.addon.busy : IconButton { label: @tr("Remove"); danger: true; source: @image-url("../assets/ui/trash.svg"); clicked => { root.remove(); } }
+            }
+        }
+    }
+}
+
+export component SortChoice inherits Rectangle {
+    in property <int> selected;
+    in property <[string]> options;
+    callback changed(int);
+    width: 220px; height: 30px; border-radius: Theme.radius;
+    border-width: 1px; border-color: Theme.outline; background: Theme.control;
+    accessible-role: button; accessible-label: @tr("Sort") + ": " + root.options[root.selected];
+    HorizontalLayout { padding-left: 10px; padding-right: 10px;
+        Text { text: root.options[root.selected]; color: Theme.text; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+        Image { width: 12px; source: @image-url("../assets/ui/caret.svg"); image-fit: contain; }
+    }
+    TouchArea { mouse-cursor: pointer; clicked => { menu.show(); } }
+    FocusScope { width: 0px; height: 0px; key-pressed(event) => { if event.text == " " || event.text == Key.Return { menu.show(); return accept; } reject } }
+    menu := PopupWindow {
+        y: root.height + 4px; width: root.width;
+        Rectangle { background: Theme.row; border-width: 1px; border-color: Theme.outline; border-radius: Theme.radius;
+            VerticalLayout { padding: 4px; spacing: 2px;
+                for option[index] in root.options : Rectangle {
+                    height: 32px; border-radius: 5px; background: item.has-hover || index == root.selected ? Theme.control : Theme.row;
+                    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: option; color: Theme.text; font-size: 12px; vertical-alignment: center; }
+                    item := TouchArea { mouse-cursor: pointer; clicked => { root.changed(index); menu.close(); } }
+                }
+            }
+        }
+    }
+}
+
+export component AddonTileView inherits Rectangle {
+    in property <AddonRow> addon;
+    callback action(); callback toggle(); callback remove(); callback open(); callback details();
+    height: 356px; border-radius: 12px; border-width: 1px; border-color: hover.has-hover ? Theme.outline : Theme.line; background: Theme.row;
+    hover := TouchArea { mouse-cursor: pointer; clicked => { root.details(); } }
+    VerticalLayout {
+        padding: 12px; spacing: 7px;
+        Rectangle { height: 110px; background: Theme.field; border-radius: 8px;
+            AddonArtwork { x: (parent.width - self.width) / 2; y: 5px; width: 100px; height: 100px; source: root.addon.icon; initial: root.addon.initial; muted: root.addon.disabled; }
+            TouchArea { mouse-cursor: pointer; clicked => { root.details(); } }
+        }
+        AddonHeading { name: root.addon.name; badge: root.addon.badge; verified: root.addon.badge-verified; muted: root.addon.disabled; size: 15px; clicked => { root.details(); } }
+        Text { text: root.addon.version; color: Theme.accent; font-size: Theme.meta; overflow: elide; }
+        Text { text: root.addon.author; color: Theme.text-muted; font-size: Theme.meta; overflow: elide; }
+        Text { text: root.addon.warning != "" ? root.addon.warning : root.addon.description; color: root.addon.warning != "" ? Theme.warn : Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; overflow: elide; height: 32px; }
+        Rectangle { vertical-stretch: 1; }
+        HorizontalLayout { spacing: 6px;
+            Text { text: root.addon.busy ? @tr("Working...") : root.addon.status; color: root.addon.status-kind == 2 ? Theme.warn : root.addon.status-kind == 1 ? Theme.ok : Theme.text-muted; font-size: 11px; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+            if root.addon.switch-label != "" : AddonSwitch { on: !root.addon.disabled && !root.addon.mixed; mixed: root.addon.mixed; label: root.addon.switch-label + " " + root.addon.name; enabled: !root.addon.busy; clicked => { root.toggle(); } }
+        }
+        HorizontalLayout { spacing: 6px; alignment: end;
+            if root.addon.can-open : IconButton { label: "GitHub"; source: @image-url("../assets/ui/source.svg"); clicked => { root.open(); } }
+            if root.addon.can-remove && !root.addon.busy : IconButton { label: @tr("Remove"); danger: true; source: @image-url("../assets/ui/trash.svg"); clicked => { root.remove(); } }
+        }
+        if root.addon.action != "" : ActionButton { text: root.addon.action; enabled: !root.addon.busy; primary: true; clicked => { root.action(); } }
+    }
+}
+
+export component AddonGrid inherits Rectangle {
+    in property <[AddonRow]> rows;
+    callback action(string); callback toggle(string); callback remove(string); callback open(string); callback details(string);
+    property <int> columns: max(1, floor((root.width - 6px) / 260px));
+    property <length> tile-width: (root.width - 16px - (root.columns - 1) * 12px) / root.columns;
+    ScrollPanel { width: parent.width; height: parent.height;
+        Rectangle { height: ceil(root.rows.length / root.columns) * 368px;
+            for row[index] in root.rows : AddonTileView {
+                x: mod(index, root.columns) * (root.tile-width + 12px); y: floor(index / root.columns) * 368px; width: root.tile-width;
+                addon: row; action => { root.action(row.id); } toggle => { root.toggle(row.id); } remove => { root.remove(row.id); } open => { root.open(row.id); } details => { root.details(row.id); }
             }
         }
     }
