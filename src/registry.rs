@@ -9,9 +9,11 @@ use std::path::Path;
 
 pub const SCHEMA: u32 = 1;
 pub const EMBEDDED: &str = include_str!("../registry/verified.json");
-pub const REMOTE_URL: &str =
-    concat!("https://raw.githubusercontent.com/", "Rezondes/SurvivorsForge", "/main/registry/verified.json");
-const CACHE_FILE: &str = "verified.json";
+pub const REMOTE_URL: &str = match option_env!("REBORN_CATALOG_URL") {
+    Some(url) => url,
+    None => "",
+};
+const CACHE_FILE: &str = "reborn-registry.json";
 
 /// Where a repo's updates come from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +40,18 @@ pub struct VerifiedAddon {
     pub category: String,
     pub folders: Vec<String>,
     pub source: SourceSpec,
+    #[serde(default)]
+    pub latest: Option<CatalogRelease>,
+}
+
+/// Exact artifact reviewed by the independent Reborn catalog generator.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CatalogRelease {
+    #[serde(rename = "tag", alias = "version")]
+    pub version: String,
+    pub asset_url: String,
+    pub sha256: String,
+    pub size: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,6 +76,14 @@ impl Registry {
         let mut ids = std::collections::HashSet::new();
         let mut folders = std::collections::HashSet::new();
         for addon in &registry.addons {
+            crate::github::normalize_repo(&addon.repo)?;
+            if let Some(release) = &addon.latest {
+                crate::network_policy::validate_download(&release.asset_url)?;
+                if release.sha256.len() != 64 || !release.sha256.bytes().all(|c| c.is_ascii_hexdigit())
+                    || release.version.is_empty() || release.size == 0 || release.size > 512 * 1024 * 1024 {
+                    return Err(Error::Parse(format!("{} has invalid release metadata", addon.id)));
+                }
+            }
             if !ids.insert(addon.id.to_lowercase()) {
                 return Err(Error::Parse(format!("duplicate id {}", addon.id)));
             }
@@ -69,6 +91,9 @@ impl Registry {
                 return Err(Error::Parse(format!("{} has no folders", addon.id)));
             }
             for folder in &addon.folders {
+                if !forge_core::folder::windows_safe_folder(folder) {
+                    return Err(Error::UnsafePath(folder.clone()));
+                }
                 if !folders.insert(folder.to_lowercase()) {
                     return Err(Error::Parse(format!("folder {folder} is used twice")));
                 }
@@ -132,25 +157,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_registry_is_valid_and_complete() {
-        let registry = Registry::embedded();
-        let repos: Vec<&str> = registry.addons.iter().map(|a| a.repo.as_str()).collect();
-        assert_eq!(repos, [
-            "morderous/survivor-ui",
-            "cadoky/LuckyOdds",
-            "cadoky/ASBuilder",
-            "Kindagrey/Azerloot",
-            "KeijinDE/KeijinUI_modern-as-ui",
-            "threenox/BordoUI",
-            "NORehabRocket/AetherHUD",
-            "Blackwellcode/BlackwellUI",
-            "migwynkriid13/SurvivorsDragonUi",
-            "kex0/AZSSpellMeter",
-            "Maidenquinn/AzerothStats",
-            "Maidenquinn/azeroth-fieldkit",
-        ]);
-        assert_eq!(registry.get("survivor-ui").unwrap().folders, ["SurvivorUI", "SurvivorPlates"]);
-        assert_eq!(registry.get("bordoui").unwrap().source, SourceSpec::Tag);
+    fn embedded_registry_starts_without_upstream_addons() {
+        assert!(Registry::embedded().addons.is_empty());
     }
 
     #[test]
@@ -199,4 +207,9 @@ mod tests {
         assert!(glob_match("a*b*c", "a-x-b-y-c"));
         assert!(!glob_match("ab*ba", "aba"));
     }
+}
+
+#[cfg(test)]
+pub(crate) fn fixture() -> Registry {
+ Registry::parse(r#"{"schema":1,"addons":[{"id":"luckyodds","name":"LuckyOdds","author":"cadoky","repo":"cadoky/LuckyOdds","folders":["LuckyOdds"],"source":{"type":"release","asset":"LuckyOdds-*.zip"}},{"id":"azsspellmeter","name":"Meter","author":"Tester","repo":"kex0/AZSSpellMeter","folders":["AZSSpellMeter"],"source":{"type":"release","asset":"AZSSpellMeter-*.zip"}}]}"#).unwrap()
 }

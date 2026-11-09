@@ -2,7 +2,7 @@ mod common;
 
 use common::make_zip;
 use survivorsforge::archive::{analyze, extract_addons};
-use survivorsforge::Error;
+use forge_core::Error;
 
 fn names(zip: &std::path::Path) -> Vec<String> {
     analyze(zip).unwrap().into_iter().map(|a| a.name).collect()

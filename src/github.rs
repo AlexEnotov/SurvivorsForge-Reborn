@@ -208,12 +208,14 @@ impl Client {
             ureq::AgentBuilder::new()
                 .timeout_connect(Duration::from_secs(10))
                 .timeout_read(Duration::from_secs(60))
+                .redirects(0)
                 .user_agent(&format!("{}/{}", crate::APP_NAME, crate::APP_VERSION))
         };
         Client { agent: builder().build(), no_redirect: builder().redirects(0).build() }
     }
 
     fn call(req: ureq::Request) -> Result<ureq::Response> {
+        crate::network_policy::validate(req.url())?;
         match req.call() {
             Ok(resp) => Ok(resp),
             Err(ureq::Error::Status(code, _)) => Err(map_error(code)),
@@ -221,8 +223,31 @@ impl Client {
         }
     }
 
+    fn follow(&self, raw: &str, download: bool) -> Result<ureq::Response> {
+        let mut current = raw.to_owned();
+        for _ in 0..8 {
+            let parsed = if download {
+                crate::network_policy::validate_download(&current)?
+            } else {
+                crate::network_policy::validate(&current)?
+            };
+            let response = Self::call(self.agent.get(&current))?;
+            if (300..400).contains(&response.status()) {
+                let target = response.header("location").ok_or_else(|| Error::Network("Redirect has no destination".into()))?;
+                current = parsed.join(target).map_err(|_| Error::Network("Invalid redirect destination".into()))?.to_string();
+                continue;
+            }
+            return Ok(response);
+        }
+        Err(Error::Network("Too many redirects".into()))
+    }
+
     pub fn get_text(&self, url: &str) -> Result<String> {
-        Self::call(self.agent.get(url))?.into_string().map_err(|e| Error::Network(e.to_string()))
+        let response = self.follow(url, false)?;
+        let mut text = String::new();
+        response.into_reader().take(8 * 1024 * 1024 + 1).read_to_string(&mut text)?;
+        if text.len() > 8 * 1024 * 1024 { return Err(Error::Network("Response exceeds 8 MB".into())); }
+        Ok(text)
     }
 
     fn refs(&self, repo: &str) -> Result<Refs> {
@@ -231,14 +256,27 @@ impl Client {
 
     /// Downloads into a temp file next to `dest` and renames it only when complete.
     pub fn download(&self, url: &str, dest: &Path) -> Result<()> {
-        let resp = Self::call(self.agent.get(url))?;
+        match self.download_once(url, dest) {
+            Err(Error::Network(_)) | Err(Error::Http(500..=599)) => self.download_once(url, dest),
+            result => result,
+        }
+    }
+
+    fn download_once(&self, url: &str, dest: &Path) -> Result<()> {
+        let resp = self.follow(url, true)?;
         let tmp = dest.with_extension("part");
         if let Some(dir) = dest.parent() {
             std::fs::create_dir_all(dir)?;
         }
         let result = (|| -> std::io::Result<()> {
             let mut file = std::fs::File::create(&tmp)?;
-            std::io::copy(&mut resp.into_reader().take(512 * 1024 * 1024), &mut file)?;
+            let expected = resp.header("content-length").and_then(|v| v.parse::<u64>().ok());
+            let max = 512 * 1024 * 1024;
+            if expected.is_some_and(|n| n > max) { return Err(std::io::Error::other("Download exceeds 512 MB")); }
+            let count = std::io::copy(&mut resp.into_reader().take(max + 1), &mut file)?;
+            if count > max || expected.is_some_and(|n| n != count) {
+                return Err(std::io::Error::other("Download is incomplete or too large"));
+            }
             file.sync_all()
         })();
         if let Err(e) = result {
@@ -284,6 +322,24 @@ impl GitHub for Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn redirects_to_author_backend_are_rejected_before_connecting() {
+        let (url, requests) = crate::test_server::serve(vec![(302, vec![("Location", "https://forgeapi.rezondes.net/v1/registry".into())], String::new())]);
+        assert!(matches!(Client::new().get_text(&url), Err(Error::ForbiddenHost(_))));
+        let request = requests.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(request.line.starts_with("GET / HTTP/1.1"));
+        assert_eq!(request.header("user-agent"), Some(concat!("RebornAddonManager/", env!("CARGO_PKG_VERSION"))));
+    }
+
+    #[test]
+    fn invalid_download_redirect_does_not_create_destination() {
+        let (url, _) = crate::test_server::serve(vec![(302, vec![("Location", "https://example.org/addon.zip".into())], String::new())]);
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("addon.zip");
+        assert!(matches!(Client::new().download(&url, &target), Err(Error::ForbiddenHost(_))));
+        assert!(!target.exists());
+    }
 
     #[test]
     fn parses_latest_location() {

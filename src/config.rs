@@ -4,21 +4,36 @@ use std::path::{Path, PathBuf};
 
 const FILE: &str = "config.json";
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Config {
     pub addons_dir: PathBuf,
+    #[serde(default = "default_language")]
+    pub language: String,
+    #[serde(default)]
+    pub window: Option<WindowState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WindowState {
+    pub x: i32, pub y: i32,
+    pub width: u32, pub height: u32,
+    pub page: i32,
+    pub maximized: bool,
 }
 
 /// `%APPDATA%\SurvivorsForge` on Windows, `~/.config/SurvivorsForge` on Linux.
-/// `SURVIVORSFORGE_DATA_DIR` overrides it, for testing against a copy of an AddOns folder.
+/// `REBORN_ADDON_MANAGER_DATA_DIR` overrides it, for testing against a copy of an AddOns folder.
 pub fn data_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("SURVIVORSFORGE_DATA_DIR") {
+    if let Some(dir) = std::env::var_os("REBORN_ADDON_MANAGER_DATA_DIR") {
         return dir.into();
     }
     directories::BaseDirs::new()
         .map(|d| d.config_dir().join(crate::APP_NAME))
         .unwrap_or_else(|| PathBuf::from(crate::APP_NAME))
 }
+
+fn default_language() -> String { "en".into() }
+impl Default for Config { fn default() -> Self { Self { addons_dir: PathBuf::new(), language: default_language(), window: None } } }
 
 impl Config {
     pub fn load(dir: &Path) -> Option<Config> {
@@ -66,7 +81,7 @@ pub fn expand_home(input: &str, home: Option<&Path>) -> PathBuf {
     PathBuf::from(input)
 }
 
-/// Button label for a found AddOns folder: the game folder above `benilla-config/AddOns`,
+/// Button label for a found AddOns folder: the game folder above `Interface/AddOns`,
 /// with the home folder shortened to `~` on Linux.
 pub fn suggestion_label(addons: &Path, home: Option<&Path>) -> String {
     let game = addons.parent().and_then(Path::parent).unwrap_or(addons);
@@ -106,7 +121,7 @@ pub fn search_roots() -> Vec<PathBuf> {
     roots.into_iter().filter(|p| p.is_dir()).collect()
 }
 
-/// Folders that look like the game's AddOns folder (`<game>/benilla-config/AddOns`), found by a
+/// Folders that look like the game's AddOns folder (`<game>/Interface/AddOns`), found by a
 /// short walk below each root. Hidden folders and symlinks are skipped, and each root has a budget
 /// of directory entries, so a huge drive can't stall the setup.
 pub fn find_addons_dirs(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
@@ -116,7 +131,7 @@ pub fn find_addons_dirs(roots: &[PathBuf], max_depth: usize) -> Vec<PathBuf> {
         let mut budget = BUDGET_PER_ROOT;
         let mut stack = vec![(root.clone(), 0usize)];
         while let Some((dir, depth)) = stack.pop() {
-            let candidate = dir.join("benilla-config").join("AddOns");
+            let candidate = dir.join("Interface").join("AddOns");
             if candidate.is_dir() && !found.contains(&candidate) {
                 found.push(candidate);
             }
@@ -169,10 +184,10 @@ mod tests {
     fn suggests_existing_addon_dirs() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        let game = root.join("Games/AzerothSurvivors/benilla-config/AddOns");
+        let game = root.join("Games/AzerothSurvivors/Interface/AddOns");
         std::fs::create_dir_all(&game).unwrap();
-        std::fs::create_dir_all(root.join(".hidden/AzerothSurvivors/benilla-config/AddOns")).unwrap();
-        std::fs::create_dir_all(root.join("a/b/c/d/benilla-config/AddOns")).unwrap();
+        std::fs::create_dir_all(root.join(".hidden/AzerothSurvivors/Interface/AddOns")).unwrap();
+        std::fs::create_dir_all(root.join("a/b/c/d/Interface/AddOns")).unwrap();
         assert_eq!(find_addons_dirs(&[root.to_path_buf()], 3), std::slice::from_ref(&game));
         assert_eq!(find_addons_dirs(&[root.to_path_buf(), root.join("Games")], 3), [game], "no duplicates");
     }
@@ -211,10 +226,10 @@ mod tests {
     #[test]
     fn labels_suggestion_by_game_folder() {
         let home = Path::new("/home/deck");
-        let addons = home.join("Games/AzerothSurvivors/benilla-config/AddOns");
+        let addons = home.join("Games/AzerothSurvivors/Interface/AddOns");
         let expected = if cfg!(windows) { home.join("Games/AzerothSurvivors").display().to_string() } else { "~/Games/AzerothSurvivors".into() };
         assert_eq!(suggestion_label(&addons, Some(home)), expected);
-        let card = Path::new("/run/media/mmcblk0p1/AS/benilla-config/AddOns");
+        let card = Path::new("/run/media/mmcblk0p1/AS/Interface/AddOns");
         assert_eq!(suggestion_label(card, Some(home)), Path::new("/run/media/mmcblk0p1/AS").display().to_string());
     }
 
@@ -233,8 +248,13 @@ mod tests {
     #[test]
     fn save_then_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let config = Config { addons_dir: PathBuf::from(r"P:\AddOns") };
+        let config = Config { addons_dir: PathBuf::from(r"P:\AddOns"), ..Config::default() };
         config.save(dir.path()).unwrap();
         assert_eq!(Config::load(dir.path()), Some(config));
     }
+}
+
+/// Reborn owns game installation and game updates.
+pub fn uses_external_game_launcher(addons: &Path) -> bool {
+ addons.parent().and_then(Path::file_name).is_some_and(|name| name.eq_ignore_ascii_case("Interface"))
 }

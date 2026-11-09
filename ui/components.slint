@@ -17,6 +17,7 @@ export struct AddonRow {
     can-remove: bool,
     can-open: bool,
     warning: string,
+    switch-label: string,
 }
 
 // Outlined gold button; `primary` is the deep red one with the gold rim.
@@ -308,6 +309,7 @@ component Pill inherits Rectangle {
 export component AddonRowView inherits Rectangle {
     in property <AddonRow> addon;
     callback action();
+    callback toggle();
     callback remove();
     callback open();
 
@@ -369,7 +371,7 @@ export component AddonRowView inherits Rectangle {
                 Rectangle { horizontal-stretch: 1; }
             }
             Text {
-                text: (root.addon.author != "" ? "by " + root.addon.author + "   " : "") + root.addon.version;
+                text: (root.addon.author != "" ? @tr("by ") + root.addon.author + "   " : "") + root.addon.version;
                 font-size: Theme.meta;
                 color: Theme.text-muted;
                 overflow: elide;
@@ -377,7 +379,7 @@ export component AddonRowView inherits Rectangle {
             Text {
                 text: root.addon.warning != "" ? root.addon.warning : root.addon.description;
                 font-size: Theme.meta;
-                color: root.addon.warning != "" ? Theme.danger : Theme.text;
+                color: root.addon.warning != "" ? Theme.warn : Theme.text;
                 overflow: elide;
             }
         }
@@ -385,7 +387,7 @@ export component AddonRowView inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Text {
-                text: root.addon.busy ? "Working..." : root.addon.status;
+                text: root.addon.busy ? @tr("Working...") : root.addon.status;
                 font-size: Theme.meta;
                 horizontal-alignment: right;
                 color: root.addon.busy ? Theme.text-muted
@@ -406,6 +408,11 @@ export component AddonRowView inherits Rectangle {
                 enabled: !root.addon.busy;
                 clicked => { root.action(); }
             }
+            if root.addon.switch-label != "" : ActionButton {
+                text: root.addon.switch-label;
+                enabled: !root.addon.busy;
+                clicked => { root.toggle(); }
+            }
             HorizontalLayout {
                 alignment: end;
                 spacing: 6px;
@@ -414,7 +421,7 @@ export component AddonRowView inherits Rectangle {
                     clicked => { root.open(); }
                 }
                 if root.addon.can-remove && !root.addon.busy : LinkButton {
-                    text: "Remove";
+                    text: @tr("Remove");
                     danger: true;
                     clicked => { root.remove(); }
                 }
@@ -561,17 +568,17 @@ export component TitleBar inherits Rectangle {
             horizontal-stretch: 1;
         }
         CaptionButton {
-            label: "Minimize";
+            label: @tr("Minimize");
             glyph: 0;
             clicked => { root.minimize(); }
         }
         CaptionButton {
-            label: root.maximized ? "Restore" : "Maximize";
+            label: root.maximized ? @tr("Restore") : @tr("Maximize");
             glyph: root.maximized ? 2 : 1;
             clicked => { root.toggle-maximize(); }
         }
         CaptionButton {
-            label: "Close";
+            label: @tr("Close");
             glyph: 3;
             clicked => { root.close(); }
         }

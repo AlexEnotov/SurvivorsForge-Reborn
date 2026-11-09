@@ -17,6 +17,10 @@ pub struct Request<'a> {
     pub name: &'a str,
     pub source: Source,
     pub version: String,
+    /// Hex SHA-256 the platform scanned; a zip that differs is deleted and nothing is installed.
+    pub expected_sha256: Option<String>,
+    /// Approval is valid only for the exact hash in this request.
+    pub allow_flagged: bool,
 }
 
 pub fn work_dir(addons_dir: &Path) -> PathBuf {
@@ -27,19 +31,66 @@ pub fn install_zip(addons_dir: &Path, state: &mut State, request: Request) -> Re
     install_zip_with(addons_dir, state, request, &mut |from, to| std::fs::rename(from, to))
 }
 
+/// Hex SHA-256 of a file.
+pub fn sha256_of(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 { break; }
+        hash.update(&buffer[..count]);
+    }
+    Ok(hex(&hash.finalize()))
+}
+
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 pub fn install_zip_with(addons_dir: &Path, state: &mut State, request: Request, mv: MoveFn) -> Result<Entry> {
+    if let Some(expected) = &request.expected_sha256 {
+        let actual = sha256_of(request.zip)?;
+        if !actual.eq_ignore_ascii_case(expected) {
+            let _ = std::fs::remove_file(request.zip);
+            return Err(Error::HashMismatch { expected: expected.clone(), actual });
+        }
+    }
     let detected = archive::analyze(request.zip)?;
+    let folders = detected.iter().map(|a| a.name.clone()).collect::<Vec<_>>();
+    let report = crate::local_scan::scan_zip(request.zip, &folders)?;
+    if crate::local_scan::flagged(&report) && !(request.allow_flagged && request.expected_sha256.is_some()) {
+        return Err(Error::NotInstallable(format!("Security scan needs review:\n{}", crate::local_scan::summary(&report))));
+    }
+    // A name Windows reads as another folder ("Shared.", "NUL") could replace or hide one.
+    if let Some(bad) = detected.iter().find(|a| !forge_core::folder::windows_safe_folder(&a.name)) {
+        return Err(Error::NotInstallable(format!("The folder name \"{}\" is not allowed on Windows", bad.name)));
+    }
+    for dependency in detected.iter().flat_map(|addon| &addon.toc.dependencies) {
+        if !forge_core::folder::windows_safe_folder(dependency) { return Err(Error::UnsafePath(dependency.clone())); }
+        // Blizzard modules may be provided by the client's MPQ rather than a disk folder.
+        if dependency.to_ascii_lowercase().starts_with("blizzard_") { continue; }
+        if !detected.iter().any(|addon| addon.name.eq_ignore_ascii_case(dependency)) && existing_folder(addons_dir, dependency).is_none() {
+            return Err(Error::NotInstallable(format!("Install required addon {dependency} first")));
+        }
+    }
     for addon in &detected {
         if let Some(owner) = state.owner_of(&addon.name).filter(|o| o.id != request.id) {
             return Err(Error::FolderOwnedBy(owner.name.clone()));
         }
     }
 
+    if crate::config::uses_external_game_launcher(addons_dir) {
+        crate::addon_enable::require_game_closed()?;
+        crate::backup::create(addons_dir)?;
+    }
     let run = crate::unique_name();
     let staging = work_dir(addons_dir).join("staging").join(&run);
     let backup = work_dir(addons_dir).join("backup").join(&run);
     std::fs::create_dir_all(&staging)?;
-    let result = archive::extract_addons(request.zip, &detected, &staging).and_then(|()| {
+    let result = archive::extract_addons(request.zip, &detected, &staging).map_err(Error::from).and_then(|()| {
         let mut replaced: Vec<String> = detected.iter().map(|a| a.name.clone()).collect();
         if let Some(old) = state.get(request.id) {
             for folder in &old.folders {
@@ -117,7 +168,7 @@ fn existing_folder(addons_dir: &Path, name: &str) -> Option<String> {
         .ok()?
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .find(|n| n.eq_ignore_ascii_case(name))
+        .find(|n| forge_core::folder::folder_key(n) == forge_core::folder::folder_key(name))
 }
 
 pub fn uninstall(addons_dir: &Path, state: &mut State, id: &str, delete: &mut dyn FnMut(&Path) -> Result<()>) -> Result<()> {
@@ -127,6 +178,205 @@ pub fn uninstall(addons_dir: &Path, state: &mut State, id: &str, delete: &mut dy
     Ok(())
 }
 
+/// Moves `folders` out of the AddOns folder into `scan::disabled_dir` (`enable` false), or back.
+/// Refuses, moving nothing, when one of them is already where it should go.
+pub fn set_enabled(addons_dir: &Path, folders: &[String], enable: bool) -> Result<()> {
+    set_enabled_with(addons_dir, folders, enable, &mut |from, to| std::fs::rename(from, to))
+}
+
+/// `set_enabled` with `mv` for the moves. A move that fails puts the folders moved before it back,
+/// so an addon never ends up half on, half off.
+pub fn set_enabled_with(addons_dir: &Path, folders: &[String], enable: bool, mv: MoveFn) -> Result<()> {
+    let disabled = crate::scan::disabled_dir(addons_dir);
+    let (from, to) = if enable { (disabled.as_path(), addons_dir) } else { (addons_dir, disabled.as_path()) };
+    if let Some(both) = folders.iter().find(|f| existing_folder(to, f).is_some()) {
+        let place = if enable { "the AddOns folder" } else { "AddOns.disabled" };
+        return Err(Error::Io(format!("{both} is in {place} already, so nothing was moved")));
+    }
+    std::fs::create_dir_all(to)?;
+    let mut moved: Vec<String> = Vec::new();
+    for folder in folders {
+        let Some(actual) = existing_folder(from, folder) else { continue };
+        if let Err(e) = mv(&from.join(&actual), &to.join(&actual)) {
+            for back in moved.iter().rev() {
+                let _ = mv(&to.join(back), &from.join(back));
+            }
+            // Windows refuses to move a folder another program holds open, even with no file of
+            // it open: an Explorer window on it, an editor, a file watcher, the game.
+            let why = if e.kind() == std::io::ErrorKind::PermissionDenied {
+                format!("{actual} is open in another program (an Explorer window, an editor or the game), so it cannot be moved. Close it there and try again")
+            } else {
+                format!("{actual} could not be moved: {e}")
+            };
+            return Err(Error::Io(format!("{why}; nothing was changed")));
+        }
+        moved.push(actual);
+    }
+    Ok(())
+}
+
+/// Where removed folders wait for Undo, one folder per removal: in the work folder, so moving
+/// there and back is a rename on the same file system, and the game does not load them.
+pub fn parking_root(addons_dir: &Path) -> PathBuf {
+    work_dir(addons_dir).join("removed")
+}
+
+/// A delete for `uninstall` and `remove_folders` that moves each folder into `dir` instead.
+pub fn park_into(dir: &Path) -> impl FnMut(&Path) -> Result<()> + '_ {
+    move |path| {
+        std::fs::create_dir_all(dir)?;
+        let name = path.file_name().ok_or_else(|| Error::Io(format!("{} has no name", path.display())))?;
+        std::fs::rename(path, dir.join(name)).map_err(Into::into)
+    }
+}
+
+/// Moves the folders parked in `dir` back into the AddOns folder. Refuses, moving nothing, when
+/// one of them is there again (installed anew meanwhile).
+pub fn unpark(addons_dir: &Path, dir: &Path) -> Result<Vec<String>> {
+    let names: Vec<String> = std::fs::read_dir(dir)?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    if let Some(back) = names.iter().find(|n| existing_folder(addons_dir, n).is_some()) {
+        return Err(Error::Io(format!("{back} is in the AddOns folder again, so it stays removed")));
+    }
+    for name in &names {
+        std::fs::rename(dir.join(name), addons_dir.join(name))?;
+    }
+    std::fs::remove_dir(dir)?;
+    Ok(names)
+}
+
+/// Sends what waits in `dir` (one removal, or the whole `parking_root`) to `delete`, the recycle
+/// bin in the app: Undo is over for it.
+pub fn flush_parked(dir: &Path, delete: &mut dyn FnMut(&Path) -> Result<()>) -> Result<()> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Ok(()) };
+    for entry in entries.flatten() {
+        delete(&entry.path())?;
+    }
+    let _ = std::fs::remove_dir(dir);
+    Ok(())
+}
+
 pub fn to_recycle_bin(path: &Path) -> Result<()> {
     trash::delete(path).map_err(|e| Error::Io(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::{Entry, Source};
+
+    fn folders(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| !n.starts_with('.')).collect())
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    fn setup() -> (tempfile::TempDir, PathBuf, State) {
+        let dir = tempfile::tempdir().unwrap();
+        let addons = dir.path().join("Addons");
+        for f in ["Lucky", "Lucky_Options", "Other"] {
+            std::fs::create_dir_all(addons.join(f)).unwrap();
+            std::fs::write(addons.join(f).join(format!("{f}.toc")), "## Title: x").unwrap();
+        }
+        let mut state = State::default();
+        state.upsert(Entry {
+            id: "lucky".into(),
+            name: "Lucky".into(),
+            source: Source::Zip { file_name: "lucky.zip".into() },
+            folders: vec!["Lucky".into(), "Lucky_Options".into()],
+            version: "zip:lucky.zip".into(),
+            installed_at: 0,
+        });
+        (dir, addons, state)
+    }
+
+    #[test]
+    fn a_disabled_addon_moves_beside_the_addons_folder_and_back() {
+        let (dir, addons, _state) = setup();
+        let both = ["Lucky".to_string(), "Lucky_Options".to_string()];
+        set_enabled(&addons, &both, false).unwrap();
+        assert_eq!(folders(&addons), ["Other"]);
+        assert_eq!(folders(&dir.path().join("AddOns.disabled")), ["Lucky", "Lucky_Options"]);
+        set_enabled(&addons, &both, true).unwrap();
+        assert_eq!(folders(&addons), ["Lucky", "Lucky_Options", "Other"]);
+        assert!(addons.join("Lucky").join("Lucky.toc").exists(), "with their files");
+    }
+
+    #[test]
+    fn a_toggle_never_overwrites() {
+        let (dir, addons, _state) = setup();
+        std::fs::create_dir_all(dir.path().join("AddOns.disabled").join("lucky_options")).unwrap();
+        let both = ["Lucky".to_string(), "Lucky_Options".to_string()];
+        let e = set_enabled(&addons, &both, false).unwrap_err();
+        assert!(e.to_string().contains("Lucky_Options is in AddOns.disabled already"), "{e}");
+        assert_eq!(folders(&addons), ["Lucky", "Lucky_Options", "Other"], "nothing moved");
+    }
+
+    #[test]
+    fn a_folder_held_open_elsewhere_moves_nothing() {
+        let (_dir, addons, _state) = setup();
+        let both = ["Lucky".to_string(), "Lucky_Options".to_string()];
+        let mut mv = |from: &Path, to: &Path| {
+            if from.ends_with("Lucky_Options") {
+                return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+            }
+            std::fs::rename(from, to)
+        };
+        let e = set_enabled_with(&addons, &both, false, &mut mv).unwrap_err();
+        assert!(e.to_string().contains("Lucky_Options is open in another program"), "{e}");
+        assert!(e.to_string().contains("nothing was changed"), "{e}");
+        assert_eq!(folders(&addons), ["Lucky", "Lucky_Options", "Other"], "Lucky came back");
+    }
+
+    #[test]
+    fn a_removed_addon_waits_in_the_work_folder() {
+        let (_dir, addons, mut state) = setup();
+        let parked = parking_root(&addons).join("lucky-1");
+        uninstall(&addons, &mut state, "lucky", &mut park_into(&parked)).unwrap();
+        assert_eq!(folders(&addons), ["Other"]);
+        assert_eq!(folders(&parked), ["Lucky", "Lucky_Options"]);
+        assert!(state.get("lucky").is_none());
+    }
+
+    #[test]
+    fn undo_puts_the_folders_back() {
+        let (_dir, addons, mut state) = setup();
+        let parked = parking_root(&addons).join("lucky-1");
+        uninstall(&addons, &mut state, "lucky", &mut park_into(&parked)).unwrap();
+        assert_eq!(unpark(&addons, &parked).unwrap(), ["Lucky", "Lucky_Options"]);
+        assert_eq!(folders(&addons), ["Lucky", "Lucky_Options", "Other"]);
+        assert!(!parked.exists());
+        assert!(addons.join("Lucky").join("Lucky.toc").exists(), "with their files");
+    }
+
+    #[test]
+    fn undo_refuses_when_a_folder_came_back() {
+        let (_dir, addons, mut state) = setup();
+        let parked = parking_root(&addons).join("lucky-1");
+        uninstall(&addons, &mut state, "lucky", &mut park_into(&parked)).unwrap();
+        std::fs::create_dir(addons.join("lucky_options")).unwrap();
+        let e = unpark(&addons, &parked).unwrap_err();
+        assert!(e.to_string().contains("Lucky_Options is in the AddOns folder again"), "{e}");
+        assert_eq!(folders(&parked), ["Lucky", "Lucky_Options"], "nothing moved");
+        assert!(!addons.join("Lucky").exists());
+    }
+
+    #[test]
+    fn what_waits_goes_to_the_bin_at_last() {
+        let (_dir, addons, mut state) = setup();
+        let root = parking_root(&addons);
+        uninstall(&addons, &mut state, "lucky", &mut park_into(&root.join("lucky-1"))).unwrap();
+        remove_folders(&addons, &["Other".into()], &mut park_into(&root.join("other-2"))).unwrap();
+        let mut binned = Vec::new();
+        flush_parked(&root, &mut |p| {
+            binned.push(p.file_name().unwrap().to_string_lossy().into_owned());
+            std::fs::remove_dir_all(p).map_err(Into::into)
+        })
+        .unwrap();
+        binned.sort();
+        assert_eq!(binned, ["lucky-1", "other-2"]);
+        assert!(!root.exists());
+        assert!(flush_parked(&root, &mut |_| panic!("nothing left")).is_ok());
+    }
 }

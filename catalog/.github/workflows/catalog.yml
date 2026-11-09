@@ -1,0 +1,76 @@
+name: Reborn catalog
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['addons/**', 'generate.mjs', '.github/workflows/catalog.yml']
+  pull_request:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: catalog-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: vars.SCANNER_REF != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexEnotov/SurvivorsForge-Reborn
+          ref: ${{ vars.SCANNER_REF }}
+          path: scanner-source
+          persist-credentials: false
+      - run: node --test scanner-source/catalog/generate.test.mjs
+      - name: Validate submitted manifests without network
+        run: node --input-type=module -e 'import fs from "node:fs"; import {parseManifest} from "./scanner-source/catalog/generate.mjs"; for (const file of fs.readdirSync("addons").filter(f => f.endsWith(".toml"))) parseManifest(fs.readFileSync("addons/"+file,"utf8"));'
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require pinned scanner source
+        env:
+          SCANNER_REF: ${{ vars.SCANNER_REF }}
+        run: test -n "$SCANNER_REF"
+      - uses: actions/checkout@v4
+        with:
+          repository: AlexEnotov/SurvivorsForge-Reborn
+          ref: ${{ vars.SCANNER_REF }}
+          path: scanner-source
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: scanner-source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: cargo build --release --locked --manifest-path scanner-source/Cargo.toml -p forge-scan --bin forge-scan
+      - name: Generate independent catalog
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FORGE_SCAN: ${{ github.workspace }}/scanner-source/target/release/forge-scan
+        run: node scanner-source/catalog/generate.mjs addons public
+      - name: Save stable generated metadata
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public
+          if ! git diff --cached --quiet; then git commit -m 'Update generated Reborn catalog'; git push origin HEAD:main; fi
+      - name: Deploy when Reborn hosting is configured
+        if: vars.CLOUDFLARE_PROJECT_NAME != ''
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy public --project-name=${{ vars.CLOUDFLARE_PROJECT_NAME }} --branch=main

@@ -1,1 +1,8 @@
 /target
+
+/.qa
+/dist
+/.migration
+/catalog/node_modules
+/catalog/.cache
+/.migration-*.log

@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use survivorsforge::config::{self, Config};
 use survivorsforge::controller::{self, Badge, Row, RowState, UNMANAGED_PREFIX};
-use survivorsforge::github::{normalize_repo, Client, GitHub};
+use survivorsforge::github::{normalize_repo, Client};
 use survivorsforge::install::{self, Request};
 use survivorsforge::registry::{self, Origin, Registry, SourceSpec};
 use survivorsforge::repo_detect;
@@ -16,11 +16,20 @@ use survivorsforge::scan::{scan_addons, InstalledAddon};
 use survivorsforge::self_update::{self, Available};
 use survivorsforge::state::{Reconciled, Source, State};
 use survivorsforge::updates::{self, RemoteVersion, UpdateStatus};
-use survivorsforge::{archive, unique_name, Error, APP_REPO, APP_VERSION};
+use survivorsforge::{archive, unique_name, Error, APP_VERSION};
 
 slint::include_modules!();
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Removed {
+    addons: PathBuf,
+    parked: PathBuf,
+    entry: Option<survivorsforge::state::Entry>,
+}
+
 struct Core {
+    addon_switches: survivorsforge::addon_enable::Store,
+    removed: Option<Removed>,
     data_dir: PathBuf,
     config: Config,
     registry: Registry,
@@ -47,6 +56,8 @@ impl Core {
     fn new(data_dir: PathBuf, config: Option<Config>) -> Core {
         let registry = registry::load(Err(Error::Network("not loaded yet".into())), &data_dir.join("cache")).0;
         let mut core = Core {
+            addon_switches: survivorsforge::addon_enable::Store::default(),
+            removed: None,
             data_dir,
             config: Config::default(),
             registry,
@@ -63,6 +74,13 @@ impl Core {
         };
         if let Some(config) = config {
             core.switch_config(config);
+        }
+        if let Ok(text) = std::fs::read_to_string(core.data_dir.join("last-removal.json")) {
+            if let Ok(removed) = serde_json::from_str::<Removed>(&text) {
+                let root = install::parking_root(&removed.addons).canonicalize().ok();
+                let parked = removed.parked.canonicalize().ok();
+                if root.is_some() && parked.as_ref().and_then(|p| p.parent()) == root.as_deref() { core.removed = Some(removed); }
+            }
         }
         core
     }
@@ -97,6 +115,7 @@ impl Core {
         if self.addons_dir().as_os_str().is_empty() {
             return;
         }
+        self.addon_switches = survivorsforge::addon_enable::Store::load(self.addons_dir()).unwrap_or_default();
         match scan_addons(&self.config.addons_dir) {
             Ok(scan) => {
                 if self.state.adopt(&scan, &self.registry) {
@@ -150,7 +169,7 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
     };
     let warning = match &row.state {
         RowState::CheckFailed(message) => message.clone(),
-        _ if row.out_of_date => "Interface is not 11200: enable \"Load out of date AddOns\" in the game".into(),
+        _ if row.out_of_date => "This addon uses a different Interface version. Check compatibility with Reborn.".into(),
         _ => String::new(),
     };
     AddonRow {
@@ -161,13 +180,14 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
         version: row.version.clone().into(),
         badge: row.badge.label().into(),
         description: row.description.clone().into(),
-        status: status.into(),
+        status: survivorsforge::i18n::text(&core.config.language, &status).into(),
         status_kind: kind,
-        action: action.into(),
+        action: survivorsforge::i18n::text(&core.config.language, action).into(),
         busy: core.busy.contains(&row.id),
         can_remove: true,
         can_open: row.repo.is_some(),
-        warning: warning.into(),
+        warning: survivorsforge::i18n::text(&core.config.language, &warning).into(),
+        switch_label: if core.addon_switches.available() { survivorsforge::i18n::text(&core.config.language, if core.addon_switches.state(&row.folders).0 { "Disable" } else { "Enable" }).into() } else { SharedString::new() },
     }
 }
 
@@ -200,12 +220,15 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
                 can_remove: false,
                 can_open: true,
                 warning: SharedString::new(),
+                switch_label: SharedString::new(),
             })
             .collect(),
     ));
+    ui.set_switches_available(core.addon_switches.available());
+    ui.set_can_undo(core.removed.is_some());
     ui.set_update_count(controller::update_all_ids(&core.statuses).len() as i32);
     ui.set_checking(core.checking);
-    ui.set_status_text(core.status.clone().into());
+    ui.set_status_text(survivorsforge::i18n::text(&core.config.language, &core.status).into());
     ui.set_status_error(core.status_error);
     ui.set_addons_dir(core.config.addons_dir.to_string_lossy().into_owned().into());
     ui.set_self_update_version(core.self_update.as_ref().map(|a| a.version.clone()).unwrap_or_default().into());
@@ -250,6 +273,7 @@ fn ask(ui: &AppWindow, title: &str, text: &str, ok: &str, danger: bool, action: 
 
 /// Downloads `remote` (or the latest version of `repo`) and installs it as entry `id`.
 fn install_remote(
+    weak: slint::Weak<AppWindow>,
     shared: &Shared,
     id: &str,
     name: &str,
@@ -257,19 +281,61 @@ fn install_remote(
     spec: &SourceSpec,
     source: Source,
     remote: Option<RemoteVersion>,
+    visiting: &mut HashSet<String>,
 ) -> survivorsforge::Result<String> {
+    if !visiting.insert(id.to_string()) {
+        return Err(Error::NotInstallable(format!("Circular addon dependency: {id}")));
+    }
+    let result = (|| {
     let (client, downloads, addons) = {
         let core = lock(shared);
         (core.client(), core.downloads(), core.addons_dir().to_path_buf())
     };
-    let remote = match remote {
-        Some(remote) => remote,
-        None => updates::resolve_remote(&client, repo, spec)?,
+    let catalog_release = {
+        let core = lock(shared);
+        if let Source::Verified { registry_id } = &source {
+            Some(core.registry.get(registry_id).and_then(|a| a.latest.clone())
+                .ok_or_else(|| Error::NotInstallable("This catalog entry has no reviewed release yet".into()))?)
+        } else { None }
+    };
+    let remote = match (catalog_release.as_ref(), remote) {
+        (Some(release), _) => RemoteVersion { id: release.version.clone(), label: release.version.clone(), download: release.asset_url.clone() },
+        (None, Some(remote)) => remote,
+        (None, None) => updates::resolve_remote(&client, repo, spec)?,
     };
     let zip = downloads.join(format!("{}.zip", unique_name()));
     client.download(&remote.download, &zip)?;
+    let hash = install::sha256_of(&zip)?;
+    if let Some(release) = &catalog_release {
+        if hash != release.sha256.to_lowercase() {
+            let _ = std::fs::remove_file(&zip);
+            return Err(Error::HashMismatch { expected: release.sha256.clone(), actual: hash });
+        }
+    }
+    let detected = archive::analyze(&zip)?;
+    let report = survivorsforge::local_scan::scan_zip(&zip, &detected.iter().map(|a| a.name.clone()).collect::<Vec<_>>())?;
+    let approved = if survivorsforge::local_scan::flagged(&report) {
+        let (send, receive) = std::sync::mpsc::channel();
+        let summary = survivorsforge::local_scan::summary(&report);
+        weak.upgrade_in_event_loop(move |ui| {
+            ask(&ui, "Security scan findings", &summary, "Install anyway", true, move || { let _ = send.send(true); });
+        }).map_err(|e| Error::Io(e.to_string()))?;
+        receive.recv().unwrap_or(false)
+    } else { true };
+    if !approved { let _ = std::fs::remove_file(&zip); return Err(Error::NotInstallable("Installation cancelled".into())); }
+    for dependency in detected.iter().flat_map(|addon| &addon.toc.dependencies) {
+        if dependency.to_ascii_lowercase().starts_with("blizzard_") { continue; }
+        if detected.iter().any(|addon| addon.name.eq_ignore_ascii_case(dependency)) { continue; }
+        let required = {
+            let core = lock(shared);
+            if core.scan.iter().any(|addon| !addon.disabled && addon.folder.eq_ignore_ascii_case(dependency)) { continue; }
+            core.registry.addons.iter().find(|addon| addon.folders.iter().any(|folder| folder.eq_ignore_ascii_case(dependency))).cloned()
+                .ok_or_else(|| Error::NotInstallable(format!("Install required addon {dependency} first")))?
+        };
+        install_remote(weak.clone(), shared, &required.id, &required.name, &required.repo, &required.source, Source::Verified { registry_id: required.id.clone() }, None, visiting)?;
+    }
     let mut core = lock(shared);
-    let request = Request { zip: &zip, id, name, source, version: remote.id.clone() };
+    let request = Request { zip: &zip, id, name, source, version: remote.id.clone(), expected_sha256: Some(hash), allow_flagged: approved };
     let result = install::install_zip(&addons, &mut core.state, request);
     let _ = std::fs::remove_file(&zip);
     result?;
@@ -277,6 +343,9 @@ fn install_remote(
     core.statuses.insert(id.to_string(), UpdateStatus::UpToDate);
     core.rescan();
     Ok(format!("{name} {} installed", remote.label))
+    })();
+    visiting.remove(id);
+    result
 }
 
 /// The install job for an entry or verified addon, or `None` when it has no remote source.
@@ -318,8 +387,9 @@ fn on_row_action(ui: &AppWindow, shared: &Shared, id: String) {
     };
     refresh(ui, shared);
     let Some((name, repo, spec, source, remote)) = job else { return };
+    let weak = ui.as_weak();
     run_bg(ui.as_weak(), shared.clone(), Some(id.clone()), move |shared| {
-        install_remote(shared, &id, &name, &repo, &spec, source, remote)
+        install_remote(weak, shared, &id, &name, &repo, &spec, source, remote, &mut HashSet::new())
     });
 }
 
@@ -347,7 +417,7 @@ fn on_update_all(ui: &AppWindow, shared: &Shared) {
         let total = jobs.len();
         let mut failed = Vec::new();
         for (id, (name, repo, spec, source, remote)) in jobs {
-            if let Err(e) = install_remote(shared, &id, &name, &repo, &spec, source, remote) {
+            if let Err(e) = install_remote(weak.clone(), shared, &id, &name, &repo, &spec, source, remote, &mut HashSet::new()) {
                 failed.push(format!("{name}: {e}"));
             }
             lock(shared).busy.remove(&id);
@@ -380,10 +450,7 @@ fn check_updates(ui: &AppWindow, shared: &Shared) {
         };
         let (registry, origin) = registry::load(client.get_text(registry::REMOTE_URL), &cache);
         let results = updates::check_all(&client, &mut state, &registry);
-        let self_update = match client.latest_release(APP_REPO) {
-            Ok(Some(release)) => self_update::available(APP_VERSION, &release),
-            _ => None,
-        };
+        let self_update = None;
 
         let mut core = lock(shared);
         core.registry = registry;
@@ -438,7 +505,7 @@ fn on_row_remove(ui: &AppWindow, shared: &Shared, id: String) {
         }
     };
     let text = format!(
-        "These folders are moved to the recycle bin: {}.\n\nYour addon settings (SavedVariables in the WTF folder) stay untouched.",
+        "These folders are moved out of AddOns and can be restored with Undo removal: {}.\n\nYour addon settings (SavedVariables in the WTF folder) stay untouched.",
         folders.join(", ")
     );
     let (weak, shared) = (ui.as_weak(), shared.clone());
@@ -447,15 +514,23 @@ fn on_row_remove(ui: &AppWindow, shared: &Shared, id: String) {
         run_bg(weak, shared, Some(id.clone()), move |shared| {
             let mut core = lock(shared);
             let addons = core.addons_dir().to_path_buf();
+            survivorsforge::addon_enable::require_game_closed()?;
+            if config::uses_external_game_launcher(&addons) { survivorsforge::backup::create(&addons)?; }
+            let parked = install::parking_root(&addons).join(unique_name());
+            let entry = core.state.get(&id).cloned();
             if id.starts_with(UNMANAGED_PREFIX) {
-                install::remove_folders(&addons, &folders, &mut install::to_recycle_bin)?;
+                install::remove_folders(&addons, &folders, &mut install::park_into(&parked))?;
             } else {
-                install::uninstall(&addons, &mut core.state, &id, &mut install::to_recycle_bin)?;
+                install::uninstall(&addons, &mut core.state, &id, &mut install::park_into(&parked))?;
                 core.statuses.remove(&id);
                 core.save_state();
             }
             core.rescan();
-            Ok(format!("{name} removed"))
+            core.removed = Some(Removed { addons, parked, entry });
+            let bytes = serde_json::to_vec(&core.removed).map_err(|e| Error::Io(e.to_string()))?;
+            std::fs::create_dir_all(&core.data_dir)?;
+            std::fs::write(core.data_dir.join("last-removal.json"), bytes)?;
+            Ok(format!("{name} removed. Use Undo removal to restore it."))
         });
     });
 }
@@ -469,7 +544,7 @@ fn on_install_zip(ui: &AppWindow, shared: &Shared) {
     let detected = match archive::analyze(&file) {
         Ok(detected) => detected,
         Err(e) => {
-            let message = if e == Error::NoAddonFound { "No addon found in the zip".into() } else { e.to_string() };
+            let message = if e == forge_core::Error::NoAddonFound { "No addon found in the zip".into() } else { e.to_string() };
             lock(shared).set_status(message, true);
             refresh(ui, shared);
             return;
@@ -479,11 +554,15 @@ fn on_install_zip(ui: &AppWindow, shared: &Shared) {
         let core = lock(shared);
         controller::plan_zip_install(&detected, &core.state, &core.scan)
     };
+    let hash = match install::sha256_of(&file) { Ok(hash) => hash, Err(error) => { lock(shared).set_status(error.to_string(), true); refresh(ui, shared); return; } };
+    let report = match survivorsforge::local_scan::scan_zip(&file, &detected.iter().map(|a| a.name.clone()).collect::<Vec<_>>()) { Ok(report) => report, Err(error) => { lock(shared).set_status(error.to_string(), true); refresh(ui, shared); return; } };
+    let flagged = survivorsforge::local_scan::flagged(&report);
+    let description = if flagged { format!("{}\n\n{}", plan.describe(), survivorsforge::local_scan::summary(&report)) } else { plan.describe() };
     let file_name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let title = if plan.is_update { "Update from zip" } else { "Install from zip" };
     let ok = if plan.is_update { "Update" } else { "Install" };
     let (weak, shared) = (ui.as_weak(), shared.clone());
-    ask(ui, title, &plan.describe(), ok, false, move || {
+    ask(ui, title, &description, ok, flagged, move || {
         lock(&shared).busy.insert(plan.id.clone());
         run_bg(weak, shared, Some(plan.id.clone()), move |shared| {
             let mut core = lock(shared);
@@ -499,6 +578,8 @@ fn on_install_zip(ui: &AppWindow, shared: &Shared) {
                 name: &plan.name,
                 source: Source::Zip { file_name: file_name.clone() },
                 version: format!("zip:{file_name}"),
+                expected_sha256: Some(hash),
+                allow_flagged: flagged,
             };
             install::install_zip(&addons, &mut state, request)?;
             core.state = state;
@@ -529,7 +610,7 @@ fn on_repo_submit(ui: &AppWindow, shared: &Shared) {
         let result = repo_detect::detect(&client, &registry, &repo, &mut |url| {
             let zip = downloads.join(format!("{}.zip", unique_name()));
             client.download(url, &zip)?;
-            archive::analyze(&zip).map(|addons| (zip.clone(), addons)).inspect_err(|_| {
+            archive::analyze(&zip).map_err(Error::from).map(|addons| (zip.clone(), addons)).inspect_err(|_| {
                 let _ = std::fs::remove_file(&zip);
             })
         });
@@ -566,9 +647,13 @@ fn show_detection(ui: &AppWindow, shared: &Shared, detection: repo_detect::Detec
     if !existing.is_empty() {
         text += &format!("\n\nExisting folders get replaced: {}.", existing.join(", "));
     }
+    let hash = match install::sha256_of(&detection.zip) { Ok(hash) => hash, Err(error) => { lock(shared).set_status(error.to_string(), true); refresh(ui, shared); return; } };
+    let report = match survivorsforge::local_scan::scan_zip(&detection.zip, &detection.addons.iter().map(|a| a.name.clone()).collect::<Vec<_>>()) { Ok(report) => report, Err(error) => { lock(shared).set_status(error.to_string(), true); refresh(ui, shared); return; } };
+    let flagged = survivorsforge::local_scan::flagged(&report);
+    if flagged { text += &format!("\n\n{}", survivorsforge::local_scan::summary(&report)); }
     let title = format!("Add {}?", detection.repo);
     let (weak, shared) = (ui.as_weak(), shared.clone());
-    ask(ui, &title, &text, "Install", false, move || {
+    ask(ui, &title, &text, "Install", flagged, move || {
         let id = detection.entry_id();
         lock(&shared).busy.insert(id.clone());
         run_bg(weak, shared, Some(id.clone()), move |shared| {
@@ -581,6 +666,8 @@ fn show_detection(ui: &AppWindow, shared: &Shared, detection: repo_detect::Detec
                 name: &name,
                 source: Source::GitHub { repo: detection.repo.clone(), spec: detection.spec.clone() },
                 version: detection.remote.id.clone(),
+                expected_sha256: Some(hash),
+                allow_flagged: flagged,
             };
             let result = install::install_zip(&addons, &mut core.state, request);
             let _ = std::fs::remove_file(&detection.zip);
@@ -612,7 +699,7 @@ fn on_settings_save(ui: &AppWindow, shared: &Shared) {
     };
     let (saved, dir_changed) = {
         let mut core = lock(shared);
-        let config = Config { addons_dir: path };
+        let config = Config { addons_dir: path, ..core.config.clone() };
         let dir_changed = config.addons_dir != core.config.addons_dir;
         let saved = config.save(&core.data_dir);
         if dir_changed {
@@ -656,7 +743,7 @@ fn on_setup_confirm(ui: &AppWindow, shared: &Shared) {
         }
         Ok(_) => {}
     }
-    let config = Config { addons_dir: path };
+    let config = Config { addons_dir: path, ..lock(shared).config.clone() };
     {
         let mut core = lock(shared);
         if let Err(e) = config.save(&core.data_dir) {
@@ -746,6 +833,20 @@ fn select_backend() -> Result<(), slint::PlatformError> {
 }
 
 fn main() -> Result<(), slint::PlatformError> {
+    if std::env::args().nth(1).as_deref() == Some("--check-catalog") {
+        let result = (|| -> survivorsforge::Result<usize> {
+            let path = std::env::args_os().nth(2).ok_or_else(|| Error::Parse("Expected a catalog file path".into()))?;
+            let registry = Registry::parse(&std::fs::read_to_string(path)?)?;
+            if registry.addons.iter().any(|addon| addon.latest.is_none()) {
+                return Err(Error::Parse("Every catalog entry needs a release with SHA-256".into()));
+            }
+            Ok(registry.addons.len())
+        })();
+        match result {
+            Ok(count) => { println!("Valid Reborn catalog: {count} addons"); std::process::exit(0); }
+            Err(error) => { eprintln!("{error}"); std::process::exit(1); }
+        }
+    }
     #[cfg(target_os = "linux")]
     select_backend()?;
     let data_dir = config::data_dir();
@@ -754,6 +855,16 @@ fn main() -> Result<(), slint::PlatformError> {
     let shared: Shared = Arc::new(Mutex::new(Core::new(data_dir, config)));
 
     let ui = AppWindow::new()?;
+    let language = lock(&shared).config.language.clone();
+    let _ = slint::select_bundled_translation(&language);
+    if let Some(saved) = &lock(&shared).config.window {
+        ui.set_page(saved.page.clamp(0, 2));
+        if (980..=7680).contains(&saved.width) && (660..=4320).contains(&saved.height) {
+            ui.window().set_size(slint::PhysicalSize::new(saved.width, saved.height));
+            ui.window().set_position(slint::PhysicalPosition::new(saved.x, saved.y));
+            ui.window().set_maximized(saved.maximized);
+        }
+    }
     ui.set_app_version(APP_VERSION.into());
     ui.set_self_update_in_place(self_update::can_replace_self());
 
@@ -797,7 +908,7 @@ fn main() -> Result<(), slint::PlatformError> {
     } else {
         ui.set_setup_searching(false);
     }
-    ui.set_addons_example(if cfg!(windows) { r"...\benilla-config\AddOns" } else { ".../benilla-config/AddOns" }.into());
+    ui.set_addons_example(if cfg!(windows) { r"...\Interface\AddOns" } else { ".../Interface/AddOns" }.into());
     ui.set_needs_setup(needs_setup);
     fill_settings(&ui, &shared);
 
@@ -823,6 +934,58 @@ fn main() -> Result<(), slint::PlatformError> {
         lock(shared).search = text.to_string();
         refresh(&ui, shared);
     });
+    on!(on_open_source, |_ui, _shared| { let _ = open::that("https://github.com/AlexEnotov/SurvivorsForge-Reborn"); });
+    on!(on_open_addons, |_ui, shared| { let _ = open::that(lock(shared).addons_dir()); });
+    on!(on_open_backups, |ui, shared| {
+        let result = survivorsforge::backup::directory(lock(shared).addons_dir()).and_then(|dir| { std::fs::create_dir_all(&dir)?; open::that(dir)?; Ok(()) });
+        if let Err(error) = result { lock(shared).set_status(error.to_string(), true); refresh(&ui, shared); }
+    });
+    on!(on_restore_backup, |ui, shared| {
+        let addons = lock(shared).addons_dir().to_path_buf();
+        let dir = match survivorsforge::backup::directory(&addons) { Ok(dir) => dir, Err(error) => { lock(shared).set_status(error.to_string(),true); refresh(&ui, shared); return; } };
+        let Some(file) = rfd::FileDialog::new().set_directory(dir).add_filter("Settings backup", &["zip"]).pick_file() else { return; };
+        let (weak, shared) = (ui.as_weak(), shared.clone());
+        ask(&ui, "Restore addon settings?", "Close the game first. Current SavedVariables will be backed up before restoring the selected files.", "Restore", true, move || {
+            run_bg(weak, shared, None, move |_shared| { survivorsforge::backup::restore(&addons, &file)?; Ok("Addon settings restored".into()) });
+        });
+    });
+    on!(on_select_language, |ui, shared, index| {
+        let language = ["en", "ru", "de"].get(index as usize).unwrap_or(&"en");
+        let _ = slint::select_bundled_translation(language);
+        let mut core = lock(shared);
+        core.config.language = language.to_string();
+        if let Err(error) = core.config.save(&core.data_dir) { core.set_status(error.to_string(), true); }
+        drop(core);
+        refresh(&ui, shared);
+    });
+    on!(on_launch_game, |ui, shared, launcher| {
+        let mut core = lock(shared);
+        if !core.busy.is_empty() {
+            core.set_status("Wait until addon operations finish before starting the game".into(), true);
+            drop(core); refresh(&ui, shared); return;
+        }
+        if let Err(error) = survivorsforge::addon_enable::require_game_closed() {
+            core.set_status(error.to_string(), true);
+            drop(core); refresh(&ui, shared); return;
+        }
+        let target = if launcher { survivorsforge::game::Target::Launcher } else { survivorsforge::game::Target::Game };
+        match survivorsforge::game::launch(core.addons_dir(), target) {
+            Ok(mut child) => {
+                core.set_status("Game process started".into(), false);
+                if !launcher {
+                    ui.window().set_minimized(true);
+                    let weak = ui.as_weak();
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                        let _ = weak.upgrade_in_event_loop(|ui| ui.window().set_minimized(false));
+                    });
+                } else { std::thread::spawn(move || { let _ = child.wait(); }); }
+            },
+            Err(error) => core.set_status(error.to_string(), true),
+        }
+        drop(core);
+        refresh(&ui, shared);
+    });
     on!(on_check_updates, |ui, shared| check_updates(&ui, shared));
     on!(on_update_all, |ui, shared| on_update_all(&ui, shared));
     on!(on_install_zip, |ui, shared| on_install_zip(&ui, shared));
@@ -834,6 +997,40 @@ fn main() -> Result<(), slint::PlatformError> {
     on!(on_repo_cancel, |ui, _shared| ui.set_repo_open(false));
     on!(on_repo_submit, |ui, shared| on_repo_submit(&ui, shared));
     on!(on_row_action, |ui, shared, id| on_row_action(&ui, shared, id.to_string()));
+    on!(on_undo_remove, |ui, shared| {
+        let result = (|| -> survivorsforge::Result<()> {
+            survivorsforge::addon_enable::require_game_closed()?;
+            let mut core = lock(shared);
+            let Some(removed) = core.removed.as_ref() else { return Ok(()); };
+            if removed.addons != core.addons_dir() { return Err(Error::NotInstallable("Select the original AddOns folder before restoring".into())); }
+            install::unpark(&removed.addons, &removed.parked)?;
+            let removed = core.removed.take().unwrap();
+            let _ = std::fs::remove_file(core.data_dir.join("last-removal.json"));
+            if let Some(entry) = removed.entry { core.state.upsert(entry); }
+            core.save_state(); core.rescan();
+            Ok(())
+        })();
+        match result { Ok(()) => lock(shared).set_status("Removal undone".into(),false), Err(error) => lock(shared).set_status(error.to_string(),true) };
+        refresh(&ui, shared);
+    });
+    on!(on_row_toggle, |ui, shared, id| {
+        let result = (|| -> survivorsforge::Result<()> {
+            survivorsforge::addon_enable::require_game_closed()?;
+            let core = lock(shared);
+            let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+            let row = rows.iter().find(|row| row.id == id.as_str()).ok_or(Error::NoAddonFound)?;
+            let store = survivorsforge::addon_enable::Store::load(core.addons_dir())?;
+            store.set(&row.folders, !store.state(&row.folders).0)?;
+            drop(core);
+            lock(shared).rescan();
+            Ok(())
+        })();
+        match result {
+            Ok(()) => lock(shared).set_status("Addon switches updated for all existing characters".into(), false),
+            Err(error) => lock(shared).set_status(error.to_string(), true),
+        }
+        refresh(&ui, shared);
+    });
     on!(on_row_remove, |ui, shared, id| on_row_remove(&ui, shared, id.to_string()));
     on!(on_row_open, |_ui, shared, id| if let Some(repo) = lock(shared).repo_of(&id) {
         let _ = open::that(format!("https://github.com/{repo}"));
@@ -874,10 +1071,26 @@ fn main() -> Result<(), slint::PlatformError> {
         ui.window().set_maximized(!ui.window().is_maximized());
     });
     // Quitting the loop instead of hiding: a hidden fullscreen window kept the app running.
-    on!(on_close_window, |_ui, _shared| {
+    on!(on_close_window, |ui, shared| {
+        if !lock(shared).busy.is_empty() {
+            lock(shared).set_status("Wait for addon installation to finish before closing".into(), true);
+            refresh(&ui, shared);
+            return;
+        }
+        let position = ui.window().position();
+        let size = ui.window().size();
+        let mut core = lock(shared);
+        core.config.window = Some(config::WindowState { x: position.x, y: position.y, width: size.width, height: size.height, page: ui.get_page(), maximized: ui.window().is_maximized() });
+        let _ = core.config.save(&core.data_dir);
         let _ = slint::quit_event_loop();
     });
 
+    let timer = slint::Timer::default();
+    let weak = ui.as_weak();
+    let timer_shared = shared.clone();
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(900), move || {
+        if let Some(ui) = weak.upgrade() { if !ui.get_needs_setup() { check_updates(&ui, &timer_shared); } }
+    });
     refresh(&ui, &shared);
     if !needs_setup {
         check_updates(&ui, &shared);

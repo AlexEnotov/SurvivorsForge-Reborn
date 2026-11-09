@@ -1,23 +1,31 @@
-pub mod archive;
+pub use forge_core::{archive, toc};
+pub mod addon_enable;
+pub mod i18n;
+pub mod local_scan;
+pub mod network_policy;
 pub mod config;
+pub mod backup;
 pub mod controller;
 pub mod github;
+pub mod game;
 pub mod install;
 pub mod registry;
 pub mod repo_detect;
 pub mod scan;
 pub mod self_update;
 pub mod state;
-pub mod toc;
+
 pub mod updates;
+#[cfg(test)]
+mod test_server;
 
 use std::fmt;
 use std::path::Path;
 
-pub const APP_NAME: &str = "SurvivorsForge";
+pub const APP_NAME: &str = "RebornAddonManager";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// GitHub repo of SurvivorsForge itself: hosts the verified list and the releases for self-update.
-pub const APP_REPO: &str = "Rezondes/SurvivorsForge";
+pub const APP_REPO: &str = "AlexEnotov/SurvivorsForge-Reborn";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
@@ -36,11 +44,17 @@ pub enum Error {
     FolderOwnedBy(String),
     AlreadyVerified(String),
     InvalidRepo(String),
+    ForbiddenHost(String),
+    NotInstallable(String),
+    HashMismatch { expected: String, actual: String },
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Error::ForbiddenHost(url) => write!(f, "Network access is not allowed: {url}"),
+            Error::NotInstallable(reason) => f.write_str(reason),
+            Error::HashMismatch { expected, actual } => write!(f, "SHA-256 mismatch: expected {expected}, received {actual}"),
             Error::Io(e) => write!(f, "File error: {e}"),
             Error::Zip(e) => write!(f, "The zip file is damaged or invalid: {e}"),
             Error::UnsafePath(p) => write!(f, "The zip contains an unsafe path ({p}), installation cancelled"),
@@ -58,6 +72,19 @@ impl fmt::Display for Error {
             Error::InvalidRepo(input) => write!(f, "\"{input}\" is not a GitHub repo (expected owner/repo or a GitHub URL)"),
         }
     }
+}
+
+impl From<forge_core::Error> for Error {
+ fn from(error: forge_core::Error) -> Self {
+  match error {
+   forge_core::Error::Io(e) => Self::Io(e),
+   forge_core::Error::Zip(e) => Self::Zip(e),
+   forge_core::Error::UnsafePath(e) => Self::UnsafePath(e),
+   forge_core::Error::NoAddonFound => Self::NoAddonFound,
+   forge_core::Error::Parse(e) => Self::Parse(e),
+   other => Self::NotInstallable(other.to_string()),
+  }
+ }
 }
 
 impl From<std::io::Error> for Error {
@@ -101,8 +128,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn app_name_is_survivorsforge() {
-        assert_eq!(APP_NAME, "SurvivorsForge");
+    fn app_name_identifies_own_client() {
+        assert_eq!(APP_NAME, "RebornAddonManager");
     }
 
     #[test]

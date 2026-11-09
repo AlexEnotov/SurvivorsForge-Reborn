@@ -18,7 +18,7 @@ pub enum Badge {
 impl Badge {
     pub fn label(self) -> &'static str {
         match self {
-            Badge::Verified => "Verified",
+            Badge::Verified => "Catalog",
             Badge::GitHub => "GitHub",
             Badge::Zip => "Zip",
             Badge::Unmanaged => "Unmanaged",
@@ -50,6 +50,10 @@ pub struct Row {
     pub repo: Option<String>,
     pub out_of_date: bool,
     pub folders: Vec<String>,
+}
+
+fn reborn_out_of_date(toc: &crate::toc::Toc) -> bool {
+    toc.interface.as_ref().is_some_and(|value| !value.split([',', ' ', ';']).any(|v| v == "11200" || v == "30300"))
 }
 
 pub const UNMANAGED_PREFIX: &str = "folder:";
@@ -130,7 +134,7 @@ pub fn installed_rows(
                 state,
                 description,
                 repo,
-                out_of_date: toc.is_some_and(|t| t.is_out_of_date()),
+                out_of_date: toc.is_some_and(|t| reborn_out_of_date(t)),
                 folders: entry.folders.clone(),
             }
         })
@@ -144,10 +148,10 @@ pub fn installed_rows(
         state: RowState::Unmanaged,
         description: addon.toc.notes.clone().unwrap_or_default(),
         repo: None,
-        out_of_date: addon.toc.is_out_of_date(),
+        out_of_date: reborn_out_of_date(&addon.toc),
         folders: vec![addon.folder.clone()],
     }));
-    rows.sort_by_key(|r| r.name.to_lowercase());
+    rows.sort_by_key(|r| (!matches!(r.state, RowState::UpdateAvailable(_)), r.name.to_lowercase()));
     rows
 }
 
@@ -275,7 +279,7 @@ mod tests {
     use crate::updates::RemoteVersion;
 
     fn scanned(folder: &str) -> InstalledAddon {
-        InstalledAddon { folder: folder.into(), toc: Toc { title: folder.into(), ..Toc::default() } }
+        InstalledAddon { disabled: false, folder: folder.into(), toc: Toc { title: folder.into(), ..Toc::default() } }
     }
 
     fn detected(name: &str) -> DetectedAddon {
@@ -312,24 +316,24 @@ mod tests {
             label: "v0.6.0".into(),
             download: String::new(),
         }));
-        let rows = installed_rows(&state, &reconciled, &scan, &Registry::embedded(), &statuses);
+        let rows = installed_rows(&state, &reconciled, &scan, &crate::registry::fixture(), &statuses);
         let summary: Vec<(&str, Badge)> = rows.iter().map(|r| (r.id.as_str(), r.badge)).collect();
         assert_eq!(summary, [
-            ("gh:o/r", Badge::GitHub),
             ("luckyodds", Badge::Verified),
+            ("gh:o/r", Badge::GitHub),
             ("folder:Tickfire", Badge::Unmanaged),
             ("zip-z", Badge::Zip),
         ]);
-        assert_eq!(rows[1].state, RowState::UpdateAvailable("v0.6.0".into()));
-        assert_eq!(rows[1].author, "cadoky");
-        assert_eq!(rows[0].state, RowState::Unchecked);
+        assert_eq!(rows[0].state, RowState::UpdateAvailable("v0.6.0".into()));
+        assert_eq!(rows[0].author, "cadoky");
+        assert_eq!(rows[1].state, RowState::Unchecked);
     }
 
     #[test]
     fn missing_folder_shows_missing() {
         let mut state = State::default();
         state.upsert(entry("zip-z", "Z", zip_source()));
-        let rows = installed_rows(&state, &state.reconcile(&[]), &[], &Registry::embedded(), &HashMap::new());
+        let rows = installed_rows(&state, &state.reconcile(&[]), &[], &crate::registry::fixture(), &HashMap::new());
         assert_eq!(rows[0].state, RowState::Missing);
     }
 

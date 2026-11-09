@@ -10,7 +10,7 @@ use crate::github::{Client, Release};
 use crate::{Error, Result};
 use std::path::{Path, PathBuf};
 
-pub const RELEASES_URL: &str = concat!("https://github.com/", "Rezondes/SurvivorsForge", "/releases/latest");
+pub const RELEASES_URL: &str = "https://github.com/AlexEnotov/SurvivorsForge-Reborn/releases/latest";
 
 pub fn asset_name_for(windows: bool, version: &str) -> String {
     if windows {
@@ -31,7 +31,7 @@ pub fn appimage_path(appimage_env: Option<std::ffi::OsString>) -> Option<PathBuf
 
 /// Whether this process can replace itself; otherwise the update banner links to the release.
 pub fn can_replace_self() -> bool {
-    cfg!(windows) || appimage_path(std::env::var_os("APPIMAGE")).is_some()
+    false
 }
 
 fn parse(version: &str) -> Option<semver::Version> {
@@ -59,44 +59,9 @@ pub fn available(current: &str, release: &Release) -> Option<Available> {
     Some(Available { version, url: asset.url.clone() })
 }
 
-/// Downloads the release zip and swaps the running executable.
-#[cfg(windows)]
-pub fn apply(client: &Client, update: &Available, work_dir: &Path) -> Result<()> {
-    use std::io::Read;
-    let zip_path = work_dir.join(asset_name(&update.version));
-    client.download(&update.url, &zip_path)?;
-    let exe_name = format!("{}.exe", crate::APP_NAME);
-    let new_exe = work_dir.join(format!("new-{exe_name}"));
-    let result = (|| -> Result<()> {
-        let mut zip = zip::ZipArchive::new(std::fs::File::open(&zip_path)?).map_err(|e| Error::Zip(e.to_string()))?;
-        let mut file = zip.by_name(&exe_name).map_err(|e| Error::Zip(e.to_string()))?;
-        let mut bytes = Vec::new();
-        file.read_to_end(&mut bytes)?;
-        std::fs::write(&new_exe, bytes)?;
-        self_replace::self_replace(&new_exe)?;
-        Ok(())
-    })();
-    let _ = std::fs::remove_file(&zip_path);
-    let _ = std::fs::remove_file(&new_exe);
-    result
-}
-
-/// Downloads the new AppImage next to the running one and renames it over it (same folder, so
-/// the swap is atomic; the running process keeps its already opened file).
-#[cfg(not(windows))]
-pub fn apply(client: &Client, update: &Available, _work_dir: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let target = appimage_path(std::env::var_os("APPIMAGE"))
-        .ok_or_else(|| Error::Io("SurvivorsForge only updates itself when it runs as an AppImage".into()))?;
-    let new = target.with_extension("AppImage.new");
-    let result = (|| -> Result<()> {
-        client.download(&update.url, &new)?;
-        std::fs::set_permissions(&new, std::fs::Permissions::from_mode(0o755))?;
-        std::fs::rename(&new, &target)?;
-        Ok(())
-    })();
-    let _ = std::fs::remove_file(&new);
-    result
+/// Automatic executable replacement is deliberately unavailable for this rebuild.
+pub fn apply(_client: &Client, _update: &Available, _work_dir: &Path) -> Result<()> {
+ Err(Error::NotInstallable("Download the new version from the Reborn releases page".into()))
 }
 
 /// Starts the (now replaced) program and ends this process. An AppImage restarts from its file:
@@ -131,8 +96,8 @@ mod tests {
 
     #[test]
     fn asset_name_per_platform() {
-        assert_eq!(asset_name_for(true, "0.2.0"), "SurvivorsForge-0.2.0-x86_64-pc-windows-msvc.zip");
-        assert_eq!(asset_name_for(false, "0.2.0"), "SurvivorsForge-0.2.0-x86_64.AppImage");
+        assert_eq!(asset_name_for(true, "0.2.0"), "RebornAddonManager-0.2.0-x86_64-pc-windows-msvc.zip");
+        assert_eq!(asset_name_for(false, "0.2.0"), "RebornAddonManager-0.2.0-x86_64.AppImage");
     }
 
     #[test]

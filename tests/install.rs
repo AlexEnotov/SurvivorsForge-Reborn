@@ -22,7 +22,42 @@ fn env() -> Env {
 }
 
 fn request<'a>(zip: &'a Path, id: &'a str) -> Request<'a> {
-    Request { zip, id, name: id, source: Source::Zip { file_name: "x.zip".into() }, version: "v1".into() }
+    Request { zip, id, name: id, source: Source::Zip { file_name: "x.zip".into() }, version: "v1".into(), expected_sha256: None, allow_flagged: false }
+}
+
+#[test]
+fn hash_mismatch_refuses_installation_before_writing_addons() {
+    let e=env();
+    let zip=make_zip(&e.zips,"fixture.zip",&[("Fixture/Fixture.toc", "## Interface: 30300")]);
+    let mut state=State::default();
+    let result=install_zip(&e.addons,&mut state,Request { expected_sha256: Some("0".repeat(64)), ..request(&zip,"fixture") });
+    assert!(matches!(result,Err(Error::HashMismatch{..})));
+    assert!(state.entries.is_empty());
+    assert!(!e.addons.join("Fixture").exists());
+}
+
+#[test]
+fn flagged_zip_needs_consent_bound_to_its_hash() {
+    let e=env();
+    let zip=make_zip(&e.zips,"fixture.zip",&[("Fixture/Fixture.toc", "missing.lua")]);
+    let mut state=State::default();
+    assert!(install_zip(&e.addons,&mut state,request(&zip,"fixture")).is_err());
+    assert!(state.entries.is_empty());
+    let hash=survivorsforge::install::sha256_of(&zip).unwrap();
+    install_zip(&e.addons,&mut state,Request { expected_sha256: Some(hash), allow_flagged: true, ..request(&zip,"fixture") }).unwrap();
+    assert!(e.addons.join("Fixture/Fixture.toc").exists());
+}
+
+#[test]
+fn required_dependency_is_checked_before_installing_any_folder() {
+    let e=env(); let mut state=State::default();
+    let zip=make_zip(&e.zips,"fixture.zip",&[("Fixture/Fixture.toc","## Dependencies: SharedLib\n## OptionalDeps: OptionalLib")]);
+    assert!(matches!(install_zip(&e.addons,&mut state,request(&zip,"fixture")),Err(Error::NotInstallable(message)) if message.contains("SharedLib")));
+    assert!(state.entries.is_empty()); assert!(!e.addons.join("Fixture").exists());
+    std::fs::create_dir_all(e.addons.join("SharedLib")).unwrap();
+    std::fs::write(e.addons.join("SharedLib/SharedLib.toc"),"").unwrap();
+    install_zip(&e.addons,&mut state,request(&zip,"fixture")).unwrap();
+    assert!(e.addons.join("Fixture/Fixture.toc").exists());
 }
 
 fn staging_is_empty(addons: &Path) -> bool {
@@ -49,7 +84,7 @@ fn replaces_folder_with_different_case() {
     std::fs::create_dir_all(e.addons.join("luckyodds")).unwrap();
     std::fs::write(e.addons.join("luckyodds/luckyodds.toc"), "old").unwrap();
     std::fs::write(e.addons.join("luckyodds/old.lua"), "x").unwrap();
-    let zip = make_zip(&e.zips, "a.zip", &[("LuckyOdds/LuckyOdds.toc", "new")]);
+    let zip = make_zip(&e.zips, "a.zip", &[("LuckyOdds/LuckyOdds.toc", "## Version: new")]);
     install_zip(&e.addons, &mut State::default(), request(&zip, "lucky")).unwrap();
     let folders: Vec<String> = survivorsforge::scan::scan_addons(&e.addons).unwrap().into_iter().map(|a| a.folder).collect();
     assert_eq!(folders, ["LuckyOdds"], "no second folder next to the old one");
@@ -71,9 +106,9 @@ fn work_dir_lives_in_addons_and_is_never_listed() {
 fn update_removes_stale_files() {
     let e = env();
     let mut state = State::default();
-    let v1 = make_zip(&e.zips, "v1.zip", &[("A/A.toc", "1"), ("A/old.lua", "x")]);
+    let v1 = make_zip(&e.zips, "v1.zip", &[("A/A.toc", "## Version: 1"), ("A/old.lua", "local old = true")]);
     install_zip(&e.addons, &mut state, request(&v1, "a")).unwrap();
-    let v2 = make_zip(&e.zips, "v2.zip", &[("A/A.toc", "2"), ("A/new.lua", "x")]);
+    let v2 = make_zip(&e.zips, "v2.zip", &[("A/A.toc", "## Version: 2"), ("A/new.lua", "local new = true")]);
     install_zip(&e.addons, &mut state, Request { version: "v2".into(), ..request(&v2, "a") }).unwrap();
     assert!(!e.addons.join("A/old.lua").exists());
     assert!(e.addons.join("A/new.lua").is_file());
@@ -86,9 +121,9 @@ fn update_removes_stale_files() {
 fn failed_move_rolls_back() {
     let e = env();
     let mut state = State::default();
-    let v1 = make_zip(&e.zips, "v1.zip", &[("A/A.toc", "1"), ("A/old.lua", "x")]);
+    let v1 = make_zip(&e.zips, "v1.zip", &[("A/A.toc", "## Version: 1"), ("A/old.lua", "local old = true")]);
     install_zip(&e.addons, &mut state, request(&v1, "a")).unwrap();
-    let v2 = make_zip(&e.zips, "v2.zip", &[("A/A.toc", "2"), ("B/B.toc", "")]);
+    let v2 = make_zip(&e.zips, "v2.zip", &[("A/A.toc", "## Version: 2"), ("B/B.toc", "")]);
     let mut calls = 0;
     let result = install_zip_with(&e.addons, &mut state, request(&v2, "a"), &mut |from, to| {
         calls += 1;
@@ -110,7 +145,7 @@ fn refuses_folder_owned_by_other_addon() {
     let mut state = State::default();
     let a = make_zip(&e.zips, "a.zip", &[("Shared/Shared.toc", "")]);
     install_zip(&e.addons, &mut state, request(&a, "first")).unwrap();
-    let b = make_zip(&e.zips, "b.zip", &[("Shared/Shared.toc", "other")]);
+    let b = make_zip(&e.zips, "b.zip", &[("Shared/Shared.toc", "## Version: other")]);
     assert_eq!(
         install_zip(&e.addons, &mut state, request(&b, "second")),
         Err(Error::FolderOwnedBy("first".into()))

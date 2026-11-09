@@ -99,6 +99,15 @@ pub fn remote_of(source: &Source, registry: &Registry) -> Option<Result<(String,
 pub fn check_all(gh: &dyn GitHub, state: &mut State, registry: &Registry) -> Vec<(String, UpdateStatus)> {
     let mut results = Vec::new();
     for entry in &mut state.entries {
+        if let Source::Verified { registry_id } = &entry.source {
+            if let Some(release) = registry.get(registry_id).and_then(|addon| addon.latest.as_ref()) {
+                let remote = RemoteVersion { id: release.version.clone(), label: release.version.clone(), download: release.asset_url.clone() };
+                let (status, adopted) = check(&entry.version, remote);
+                if let Some(version) = adopted { entry.version = version; }
+                results.push((entry.id.clone(), status));
+                continue;
+            }
+        }
         let status = match remote_of(&entry.source, registry) {
             None => UpdateStatus::Manual,
             Some(Err(e)) => UpdateStatus::CheckFailed(e.to_string()),
@@ -248,7 +257,7 @@ mod tests {
     fn zip_source_is_manual() {
         let mut state = State::default();
         state.upsert(Entry { source: Source::Zip { file_name: "x.zip".into() }, ..entry("x", "zip:x.zip") });
-        let results = check_all(&FakeGitHub::default(), &mut state, &Registry::embedded());
+        let results = check_all(&FakeGitHub::default(), &mut state, &crate::registry::fixture());
         assert_eq!(results, [("x".to_string(), UpdateStatus::Manual)]);
     }
 
@@ -260,7 +269,7 @@ mod tests {
         let mut state = State::default();
         state.upsert(entry("luckyodds", "toc:0.4.0"));
         state.upsert(entry("azsspellmeter", "toc:1.31"));
-        let results = check_all(&gh, &mut state, &Registry::embedded());
+        let results = check_all(&gh, &mut state, &crate::registry::fixture());
         assert!(matches!(&results[0].1, UpdateStatus::CheckFailed(m) if m.contains("limiting requests")));
         assert_eq!(results[1].1, UpdateStatus::UpToDate);
         assert_eq!(state.get("azsspellmeter").unwrap().version, "v1.31");

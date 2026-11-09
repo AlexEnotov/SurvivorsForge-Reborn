@@ -84,7 +84,9 @@ impl State {
     }
 
     pub fn owner_of(&self, folder: &str) -> Option<&Entry> {
-        self.entries.iter().find(|e| e.folders.iter().any(|f| f.eq_ignore_ascii_case(folder)))
+        // As Windows opens folders: "Shared." is the folder "Shared".
+        let key = forge_core::folder::folder_key(folder);
+        self.entries.iter().find(|e| e.folders.iter().any(|f| forge_core::folder::folder_key(f) == key))
     }
 
     /// Inserts or replaces the entry with the same id.
@@ -151,6 +153,7 @@ mod tests {
         InstalledAddon {
             folder: folder.into(),
             toc: Toc { title: folder.into(), version: Some(version.into()), ..Toc::default() },
+            disabled: false,
         }
     }
 
@@ -202,14 +205,15 @@ mod tests {
     #[test]
     fn adopts_known_verified_folders() {
         let mut state = State::default();
+        let registry = crate::registry::Registry::parse(r#"{"schema":1,"addons":[{"id":"survivor-ui","name":"Fixture","author":"Tester","repo":"example/fixture","folders":["SurvivorUI","SurvivorPlates"],"source":{"type":"tag"}}]}"#).unwrap();
         let scan = [scanned("SurvivorPlates", "3.0.36"), scanned("SurvivorUI", "3.0.36"), scanned("Tickfire", "1.0")];
-        assert!(state.adopt(&scan, &Registry::embedded()));
+        assert!(state.adopt(&scan, &registry));
         assert_eq!(state.entries.len(), 1);
         let e = &state.entries[0];
         assert_eq!(e.id, "survivor-ui");
         assert_eq!(e.version, "toc:3.0.36");
         assert_eq!(e.folders, ["SurvivorUI", "SurvivorPlates"]);
-        assert!(!state.adopt(&scan, &Registry::embedded()), "second run changes nothing");
+        assert!(!state.adopt(&scan, &registry), "second run changes nothing");
     }
 
     #[test]
