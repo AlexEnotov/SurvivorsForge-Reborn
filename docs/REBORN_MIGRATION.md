@@ -30,9 +30,11 @@ Original project: https://github.com/Rezondes/SurvivorsForge
   hash mismatch refusal, local scanner, saved settings snapshots, addon switches,
   blocked redirects before contacting author services, and generator output
   accepted by the actual launcher parser.
-- Local UI conveniences are not a 1:1 copy of 0.8.0. Detailed cards, grid/list
-  choices, shortcut coverage and toast presentation belong to the next interface
-  stage. Imported toast and pack libraries are available but not yet exposed.
+- Redesigned desktop UI: sidebar navigation, persistent launch actions, searchable
+  filtered cards with explicit addon switches, full local details/error dialogs,
+  grouped scrollable settings, EN/RU/DE layout checks and keyboard shortcuts.
+- Optional grid/tile views, pack export and toast presentation are not exposed
+  in this edition. The imported pack/toast libraries remain available.
 - Pending team inputs: Cloudflare project/domain/token and approved starter addons.
 - Deliberately omitted: original backend, accounts, comments, issues, cloud
   profiles/sync, telemetry and original game downloads.
@@ -42,7 +44,7 @@ source remains attached to the historical release as
 `SurvivorsForge-Reborn-0.7.2-source.zip`; the historical tag is retained solely for
 source provenance. Active development starts from v0.3.2 on main.
 
-Extensive visual redesign is the next stage, after functional verification.
+See INTERFACE.md for the implemented interface and offline visual verification.
 
 ## Upstream audit notes
 

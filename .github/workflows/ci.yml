@@ -23,4 +23,11 @@ jobs:
           $env:FORGE_SCAN = (Resolve-Path target/debug/forge-scan.exe).Path
           $env:REBORN_MANAGER_CHECK = (Resolve-Path target/debug/RebornAddonManager.exe).Path
           node --test catalog/generate.test.mjs
+      - name: Check offline interface interactions and render pages
+        run: cargo test --locked --bin RebornAddonManager capture_ui -- --ignored
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Reborn-interface-preview
+          path: .qa/ui/*.png
+          retention-days: 7
       - run: cargo check --locked --workspace

@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { AddonSwitch } from "workspace.slint";
 
 export struct AddonRow {
     id: string,
@@ -18,9 +19,11 @@ export struct AddonRow {
     can-open: bool,
     warning: string,
     switch-label: string,
+    disabled: bool,
+    mixed: bool,
 }
 
-// Outlined gold button; `primary` is the deep red one with the gold rim.
+// Shared primary and secondary actions.
 export component ActionButton inherits Rectangle {
     in property <string> text;
     in property <bool> primary;
@@ -32,6 +35,7 @@ export component ActionButton inherits Rectangle {
 
     accessible-role: button;
     accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
     height: root.large ? 46px : Theme.touch ? 44px : 34px;
     min-width: label.preferred-width + (root.large ? 40px : 28px);
     border-radius: Theme.radius;
@@ -42,7 +46,7 @@ export component ActionButton inherits Rectangle {
         : root.primary ? (touch.has-hover ? Theme.outline-active : Theme.outline-hover)
         : touch.has-hover ? Theme.outline-hover : Theme.outline;
     background: !root.enabled ? Theme.control
-        : root.primary ? (touch.has-hover && !touch.pressed ? Theme.crimson-hover : Theme.crimson)
+        : root.primary ? (touch.has-hover && !touch.pressed ? Theme.primary-hover : Theme.primary)
         : Theme.control;
 
     label := Text {
@@ -56,7 +60,7 @@ export component ActionButton inherits Rectangle {
         overflow: elide;
         color: !root.enabled ? Theme.text-disabled
             : root.danger ? Theme.danger
-            : root.primary ? Theme.gold-bright : Theme.gold;
+            : root.primary ? Theme.accent-bright : Theme.accent;
     }
 
     touch := TouchArea {
@@ -90,6 +94,7 @@ export component LinkButton inherits Rectangle {
 
     accessible-role: button;
     accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
     height: Theme.touch ? 44px : 22px;
     min-width: label.preferred-width + (Theme.touch ? 20px : 10px);
 
@@ -100,7 +105,7 @@ export component LinkButton inherits Rectangle {
         font-size: Theme.touch ? Theme.body : Theme.meta;
         horizontal-alignment: center;
         vertical-alignment: center;
-        color: !touch.has-hover ? Theme.text-muted : root.danger ? Theme.danger : Theme.gold;
+        color: !touch.has-hover ? Theme.text-muted : root.danger ? Theme.danger : Theme.accent;
     }
 
     touch := TouchArea {
@@ -111,7 +116,7 @@ export component LinkButton inherits Rectangle {
     }
 }
 
-// Top-level page tab, like the game's menu tabs. The selected one turns deep red.
+// Segmented option for language selection.
 export component TabButton inherits Rectangle {
     in property <string> text;
     in property <bool> active;
@@ -119,12 +124,14 @@ export component TabButton inherits Rectangle {
 
     accessible-role: tab;
     accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    option-focus := FocusScope { width: 0px; height: 0px; key-pressed(event) => { if event.text == " " || event.text == Key.Return { root.clicked(); return accept; } reject } }
     height: Theme.touch ? 44px : 40px;
     min-width: label.preferred-width + 36px;
     border-radius: Theme.radius;
     border-width: 1px;
-    border-color: root.active ? Theme.outline-active : touch.has-hover ? Theme.outline-hover : Theme.outline;
-    background: root.active ? Theme.crimson : touch.has-hover ? Theme.control : Theme.bg;
+    border-color: option-focus.has-focus ? Theme.outline-active : root.active ? Theme.outline-active : touch.has-hover ? Theme.outline-hover : Theme.outline;
+    background: root.active ? Theme.primary : touch.has-hover ? Theme.control : Theme.bg;
 
     label := Text {
         width: parent.width;
@@ -133,7 +140,7 @@ export component TabButton inherits Rectangle {
         font-size: 17px;
         horizontal-alignment: center;
         vertical-alignment: center;
-        color: root.active ? Theme.gold-bright : Theme.gold;
+        color: root.active ? Theme.accent-bright : Theme.accent;
     }
 
     touch := TouchArea {
@@ -144,44 +151,15 @@ export component TabButton inherits Rectangle {
     }
 }
 
-// Uncial heading between two gold rules that fade out, like "Class" and "Zone" in the game.
-export component SectionHeading inherits HorizontalLayout {
-    in property <string> text;
-    in property <length> size: Theme.title;
-    spacing: 16px;
-
-    VerticalLayout {
-        alignment: center;
-        horizontal-stretch: 1;
-        Rectangle {
-            height: 1px;
-            background: @linear-gradient(90deg, #00000000 0%, Theme.outline 100%);
-        }
-    }
-    Text {
-        text: root.text;
-        font-family: Theme.font-display;
-        font-size: root.size;
-        color: Theme.gold-heading;
-        vertical-alignment: center;
-    }
-    VerticalLayout {
-        alignment: center;
-        horizontal-stretch: 1;
-        Rectangle {
-            height: 1px;
-            background: @linear-gradient(90deg, Theme.outline 0%, #00000000 100%);
-        }
-    }
-}
-
-// Single-line text input with the game's gold-rimmed field look.
+// Shared single-line input for setup, search and settings.
 export component Field inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder;
     in property <bool> enabled: true;
     callback accepted();
     callback edited(string);
+    in property <int> focus-request;
+    changed focus-request => { input.focus(); }
 
     public function focus-input() {
         input.focus();
@@ -206,7 +184,7 @@ export component Field inherits Rectangle {
         height: parent.height;
         text: root.placeholder;
         font-size: Theme.body;
-        color: Theme.text-disabled;
+        color: Theme.text-muted;
         vertical-alignment: center;
         overflow: elide;
     }
@@ -220,15 +198,15 @@ export component Field inherits Rectangle {
         single-line: true;
         font-size: Theme.body;
         color: root.enabled ? Theme.text : Theme.text-muted;
-        selection-background-color: #8A6C3A;
-        selection-foreground-color: Theme.gold-bright;
+        selection-background-color: #2E65AE;
+        selection-foreground-color: Theme.accent-bright;
         vertical-alignment: center;
         accepted => { root.accepted(); }
         edited => { root.edited(self.text); }
     }
 }
 
-// Scrollable column with a thin gold scrollbar instead of the platform one.
+// Scrollable column with a palette-matched scrollbar.
 export component ScrollPanel inherits Rectangle {
     in property <length> spacing: 6px;
     property <length> bar: 6px;
@@ -302,129 +280,56 @@ component Pill inherits Rectangle {
         font-size: 11px;
         horizontal-alignment: center;
         vertical-alignment: center;
-        color: Theme.gold;
+        color: Theme.accent;
     }
 }
 
 export component AddonRowView inherits Rectangle {
     in property <AddonRow> addon;
-    callback action();
-    callback toggle();
-    callback remove();
-    callback open();
-
-    // Touch: room for the 44px action button and 44px links stacked in the last column.
-    height: Theme.touch ? 104px : 84px;
-    border-radius: Theme.radius;
-    border-width: 1px;
-    border-color: hover.has-hover ? Theme.outline : Theme.line;
+    callback action(); callback toggle(); callback remove(); callback open(); callback details();
+    height: root.addon.warning != "" ? 146px : 118px;
+    border-radius: 12px; border-width: 1px;
+    border-color: root.addon.status-kind == 2 ? #36598C : hover.has-hover ? Theme.outline : Theme.line;
     background: hover.has-hover ? Theme.row-hover : Theme.row;
-
-    hover := TouchArea {
-        width: parent.width;
-        height: parent.height;
-    }
-
+    hover := TouchArea { }
     HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
-        spacing: 16px;
-
+        padding: 14px; spacing: 14px;
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 50px;
-                height: 50px;
-                border-radius: Theme.radius;
-                border-width: 1px;
-                border-color: Theme.outline;
-                background: Theme.field;
-                Text {
-                    width: parent.width;
-                    height: parent.height;
-                    text: root.addon.initial;
-                    font-size: 26px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    color: Theme.gold-heading;
-                }
+                width: 44px; height: 44px; border-radius: 12px;
+                background: root.addon.disabled ? #26303F : #223855;
+                Text { text: root.addon.initial; color: root.addon.disabled ? Theme.text-muted : Theme.accent; font-size: 22px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
             }
         }
-
         VerticalLayout {
-            alignment: center;
-            spacing: 3px;
-            horizontal-stretch: 1;
-
+            alignment: center; spacing: 4px; horizontal-stretch: 1;
             HorizontalLayout {
-                spacing: 10px;
-                Text {
-                    text: root.addon.name;
-                    font-size: Theme.heading;
-                    color: Theme.gold-heading;
-                    overflow: elide;
+                spacing: 8px;
+                Rectangle {
+                    horizontal-stretch: 1; height: 24px;
+                    Text { width: parent.width; height: parent.height; horizontal-alignment: left; text: root.addon.name; color: root.addon.disabled ? Theme.text-muted : Theme.text; font-size: 17px; font-weight: 600; vertical-alignment: center; overflow: elide; }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.details(); } }
                 }
-                VerticalLayout {
-                    alignment: center;
-                    Pill { text: root.addon.badge; }
-                }
-                Rectangle { horizontal-stretch: 1; }
+                if root.addon.badge != "" : Pill { text: root.addon.badge; }
             }
-            Text {
-                text: (root.addon.author != "" ? @tr("by ") + root.addon.author + "   " : "") + root.addon.version;
-                font-size: Theme.meta;
-                color: Theme.text-muted;
-                overflow: elide;
-            }
-            Text {
-                text: root.addon.warning != "" ? root.addon.warning : root.addon.description;
-                font-size: Theme.meta;
-                color: root.addon.warning != "" ? Theme.warn : Theme.text;
-                overflow: elide;
-            }
-        }
-
-        VerticalLayout {
-            alignment: center;
-            Text {
-                text: root.addon.busy ? @tr("Working...") : root.addon.status;
-                font-size: Theme.meta;
-                horizontal-alignment: right;
-                color: root.addon.busy ? Theme.text-muted
-                    : root.addon.status-kind == 1 ? Theme.ok
-                    : root.addon.status-kind == 2 ? Theme.warn
-                    : root.addon.status-kind == 3 ? Theme.danger
-                    : Theme.text-muted;
-            }
-        }
-
-        VerticalLayout {
-            alignment: center;
-            spacing: 4px;
-            width: Theme.touch ? 160px : 124px;
-            if root.addon.action != "" : ActionButton {
-                text: root.addon.action;
-                primary: root.addon.status-kind == 2;
-                enabled: !root.addon.busy;
-                clicked => { root.action(); }
-            }
-            if root.addon.switch-label != "" : ActionButton {
-                text: root.addon.switch-label;
-                enabled: !root.addon.busy;
-                clicked => { root.toggle(); }
-            }
+            Text { text: root.addon.version + (root.addon.author != "" ? (root.addon.version != "" ? "  ·  " : "") + root.addon.author : ""); color: Theme.text-muted; font-size: Theme.meta; overflow: elide; }
+            Text { text: root.addon.warning != "" ? root.addon.warning : root.addon.description; color: root.addon.warning != "" ? Theme.warn : Theme.text-muted; font-size: Theme.meta; wrap: word-wrap; overflow: elide; max-height: root.addon.warning != "" ? 45px : 18px; }
             HorizontalLayout {
-                alignment: end;
-                spacing: 6px;
-                if root.addon.can-open : LinkButton {
-                    text: "GitHub";
-                    clicked => { root.open(); }
-                }
-                if root.addon.can-remove && !root.addon.busy : LinkButton {
-                    text: @tr("Remove");
-                    danger: true;
-                    clicked => { root.remove(); }
-                }
+                spacing: 12px; alignment: start;
+                LinkButton { text: @tr("Details"); clicked => { root.details(); } }
+                if root.addon.can-open : LinkButton { text: "GitHub"; clicked => { root.open(); } }
+                if root.addon.can-remove && !root.addon.busy : LinkButton { text: @tr("Remove"); danger: true; clicked => { root.remove(); } }
+            }
+        }
+        VerticalLayout {
+            alignment: center; spacing: 10px; width: 136px;
+            Text { text: root.addon.busy ? @tr("Working...") : root.addon.status; color: root.addon.status-kind == 2 ? Theme.warn : root.addon.status-kind == 1 ? Theme.ok : root.addon.status-kind == 3 ? Theme.danger : Theme.text-muted; font-size: Theme.meta; horizontal-alignment: right; overflow: elide; }
+            if root.addon.action != "" : ActionButton { text: root.addon.action; primary: root.addon.status-kind == 2; enabled: !root.addon.busy; clicked => { root.action(); } }
+            if root.addon.switch-label != "" : HorizontalLayout {
+                alignment: end; spacing: 8px;
+                Text { text: root.addon.mixed ? @tr("Mixed") : root.addon.disabled ? @tr("Disabled") : @tr("Enabled"); font-size: Theme.meta; color: root.addon.disabled ? Theme.text-muted : Theme.text; vertical-alignment: center; }
+                AddonSwitch { on: !root.addon.disabled && !root.addon.mixed; mixed: root.addon.mixed; label: root.addon.switch-label + " " + root.addon.name; enabled: !root.addon.busy; clicked => { root.toggle(); } }
             }
         }
     }
@@ -448,7 +353,7 @@ export component Overlay inherits Rectangle {
 
 // Panel with a gold-brown rim, used for the main content area.
 export component Panel inherits Rectangle {
-    border-radius: 4px;
+    border-radius: 12px;
     border-width: 1px;
     border-color: Theme.line;
     background: Theme.panel;
@@ -456,19 +361,16 @@ export component Panel inherits Rectangle {
 
 export component DialogCard inherits Rectangle {
     in property <string> title;
-    width: 500px;
+    width: 560px;
     height: layout.preferred-height;
-    border-radius: 4px;
+    border-radius: 12px;
     border-width: 1px;
     border-color: Theme.outline;
     background: Theme.panel;
     layout := VerticalLayout {
         padding: Theme.gap-loose;
         spacing: 18px;
-        SectionHeading {
-            text: root.title;
-            size: 24px;
-        }
+        Text { text: root.title; color: Theme.text; font-size: 22px; font-weight: 600; wrap: word-wrap; }
         @children
     }
 }
@@ -484,10 +386,10 @@ component CaptionButton inherits Rectangle {
     accessible-label: root.label;
     width: 46px;
     background: !touch.has-hover ? transparent
-        : root.glyph == 3 ? Theme.crimson-hover
+        : root.glyph == 3 ? Theme.primary-hover
         : touch.pressed ? Theme.bg : Theme.control;
 
-    property <brush> stroke: touch.has-hover ? Theme.gold-bright : Theme.text-muted;
+    property <brush> stroke: touch.has-hover ? Theme.accent-bright : Theme.text-muted;
 
     if root.glyph == 0 : Path {
         width: 10px;
@@ -563,7 +465,7 @@ export component TitleBar inherits Rectangle {
             text: root.title;
             font-family: Theme.font-display;
             font-size: 14px;
-            color: Theme.gold;
+            color: Theme.accent;
             vertical-alignment: center;
             horizontal-stretch: 1;
         }

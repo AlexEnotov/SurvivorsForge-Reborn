@@ -19,6 +19,8 @@ use survivorsforge::updates::{self, RemoteVersion, UpdateStatus};
 use survivorsforge::{archive, unique_name, Error, APP_VERSION};
 
 slint::include_modules!();
+#[cfg(test)]
+mod ui_preview;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Removed {
@@ -28,6 +30,7 @@ struct Removed {
 }
 
 struct Core {
+    list_filter: i32,
     addon_switches: survivorsforge::addon_enable::Store,
     removed: Option<Removed>,
     data_dir: PathBuf,
@@ -56,6 +59,7 @@ impl Core {
     fn new(data_dir: PathBuf, config: Option<Config>) -> Core {
         let registry = registry::load(Err(Error::Network("not loaded yet".into())), &data_dir.join("cache")).0;
         let mut core = Core {
+            list_filter: 0,
             addon_switches: survivorsforge::addon_enable::Store::default(),
             removed: None,
             data_dir,
@@ -73,7 +77,8 @@ impl Core {
             self_update: None,
         };
         if let Some(config) = config {
-            core.switch_config(config);
+            if config.addons_dir.as_os_str().is_empty() { core.config = config; }
+            else { core.switch_config(config); }
         }
         if let Ok(text) = std::fs::read_to_string(core.data_dir.join("last-removal.json")) {
             if let Ok(removed) = serde_json::from_str::<Removed>(&text) {
@@ -178,7 +183,7 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
         initial: initial(&row.name),
         author: row.author.clone().into(),
         version: row.version.clone().into(),
-        badge: row.badge.label().into(),
+        badge: survivorsforge::i18n::text(&core.config.language, row.badge.label()).into(),
         description: row.description.clone().into(),
         status: survivorsforge::i18n::text(&core.config.language, &status).into(),
         status_kind: kind,
@@ -187,6 +192,8 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
         can_remove: true,
         can_open: row.repo.is_some(),
         warning: survivorsforge::i18n::text(&core.config.language, &warning).into(),
+        disabled: core.addon_switches.available() && { let (all, mixed) = core.addon_switches.state(&row.folders); !all && !mixed },
+        mixed: core.addon_switches.available() && core.addon_switches.state(&row.folders).1,
         switch_label: if core.addon_switches.available() { survivorsforge::i18n::text(&core.config.language, if core.addon_switches.state(&row.folders).0 { "Disable" } else { "Enable" }).into() } else { SharedString::new() },
     }
 }
@@ -194,10 +201,21 @@ fn installed_row(row: &Row, core: &Core) -> AddonRow {
 fn refresh(ui: &AppWindow, shared: &Shared) {
     let core = lock(shared);
     let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+    ui.set_operations_running(!core.busy.is_empty());
     ui.set_installed_total(rows.len() as i32);
+    ui.set_language_index(survivorsforge::i18n::index(&core.config.language));
+    ui.set_catalog_ready(!registry::REMOTE_URL.is_empty());
+    ui.set_enabled_total(rows.iter().filter(|row| core.addon_switches.available() && core.addon_switches.state(&row.folders).0).count() as i32);
+    ui.set_disabled_total(rows.iter().filter(|row| { let (all, mixed) = core.addon_switches.state(&row.folders); core.addon_switches.available() && !all && !mixed }).count() as i32);
     ui.set_installed_rows(model(
         rows.iter()
             .filter(|r| controller::matches(&core.search, &r.name, &r.author))
+            .filter(|row| match core.list_filter {
+                1 => core.addon_switches.available() && core.addon_switches.state(&row.folders).0,
+                2 => { let (all, mixed) = core.addon_switches.state(&row.folders); core.addon_switches.available() && !all && !mixed },
+                3 => matches!(row.state, RowState::UpdateAvailable(_)),
+                _ => true,
+            })
             .map(|r| installed_row(r, &core))
             .collect(),
     ));
@@ -221,6 +239,8 @@ fn refresh(ui: &AppWindow, shared: &Shared) {
                 can_open: true,
                 warning: SharedString::new(),
                 switch_label: SharedString::new(),
+                disabled: false,
+                mixed: false,
             })
             .collect(),
     ));
@@ -851,7 +871,7 @@ fn main() -> Result<(), slint::PlatformError> {
     select_backend()?;
     let data_dir = config::data_dir();
     let config = Config::load(&data_dir);
-    let needs_setup = config.is_none();
+    let needs_setup = config.as_ref().is_none_or(|config| config.addons_dir.as_os_str().is_empty());
     let shared: Shared = Arc::new(Mutex::new(Core::new(data_dir, config)));
 
     let ui = AppWindow::new()?;
@@ -996,6 +1016,31 @@ fn main() -> Result<(), slint::PlatformError> {
     });
     on!(on_repo_cancel, |ui, _shared| ui.set_repo_open(false));
     on!(on_repo_submit, |ui, shared| on_repo_submit(&ui, shared));
+    on!(on_list_filter_changed, |ui, shared, filter| { lock(shared).list_filter = filter; refresh(&ui, shared); });
+    on!(on_copy_status, |ui, shared| {
+        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(ui.get_status_text().to_string())) {
+            Ok(()) => ui.set_status_copied(true),
+            Err(error) => { lock(shared).set_status(error.to_string(),true); refresh(&ui, shared); },
+        }
+    });
+    on!(on_row_details, |ui, shared, id| {
+        let core = lock(shared);
+        let rows = controller::installed_rows(&core.state, &core.reconciled, &core.scan, &core.registry, &core.statuses);
+        if let Some(row) = rows.iter().find(|row| row.id == id.as_str()) {
+            ui.set_details_title(row.name.clone().into());
+            let warning = match &row.state {
+                RowState::CheckFailed(message) => message.clone(),
+                _ if row.out_of_date => survivorsforge::i18n::text(&core.config.language, "This addon uses a different Interface version. Check compatibility with Reborn."),
+                _ => String::new(),
+            };
+            ui.set_details_text(format!("{}\n{}\n\n{}\n\n{}\n\n{}", row.author, row.version, row.description, warning, row.folders.join(", ")).trim().into());
+            ui.set_details_open(true);
+        } else if let Some(addon) = core.registry.get(&id) {
+            ui.set_details_title(addon.name.clone().into());
+            ui.set_details_text(format!("{}\n{}\n\n{}\n\n{}", addon.author, addon.repo, addon.description, addon.folders.join(", ")).into());
+            ui.set_details_open(true);
+        }
+    });
     on!(on_row_action, |ui, shared, id| on_row_action(&ui, shared, id.to_string()));
     on!(on_undo_remove, |ui, shared| {
         let result = (|| -> survivorsforge::Result<()> {

@@ -1206,5 +1206,145 @@
   "This addon uses a different Interface version. Check compatibility with Reborn.": [
     "У аддона другая версия Interface. Проверьте совместимость с Reborn.",
     "Dieses Addon verwendet eine andere Interface-Version. Prüfe die Reborn-Kompatibilität."
+  ],
+  "Play game": [
+    "Играть",
+    "Spiel starten"
+  ],
+  "Open launcher": [
+    "Открыть лаунчер",
+    "Launcher öffnen"
+  ],
+  "Your addons": [
+    "Ваши аддоны",
+    "Deine Addons"
+  ],
+  "Discover addons": [
+    "Каталог аддонов",
+    "Addons entdecken"
+  ],
+  "Everything installed in your Reborn client.": [
+    "Все аддоны, установленные в вашем клиенте Reborn.",
+    "Alle in deinem Reborn-Client installierten Addons."
+  ],
+  "Explore the independent Reborn addon catalog.": [
+    "Найдите аддоны в независимом каталоге Reborn.",
+    "Entdecke den unabhängigen Reborn-Addon-Katalog."
+  ],
+  "Make the manager work the way you want.": [
+    "Настройте менеджер под себя.",
+    "Passe den Manager an deine Wünsche an."
+  ],
+  "Refresh": [
+    "Обновить",
+    "Aktualisieren"
+  ],
+  "Install ZIP": [
+    "Установить ZIP",
+    "ZIP installieren"
+  ],
+  "Add GitHub": [
+    "С GitHub",
+    "Von GitHub"
+  ],
+  "All": [
+    "Все",
+    "Alle"
+  ],
+  "An addon was removed.": [
+    "Аддон удалён.",
+    "Ein Addon wurde entfernt."
+  ],
+  "Add your first addon": [
+    "Добавьте первый аддон",
+    "Füge dein erstes Addon hinzu"
+  ],
+  "No matching addons": [
+    "Аддоны не найдены",
+    "Keine passenden Addons"
+  ],
+  "Install a ZIP archive or add a GitHub repository to get started.": [
+    "Установите ZIP-архив или добавьте репозиторий GitHub.",
+    "Installiere ein ZIP-Archiv oder füge ein GitHub-Repository hinzu."
+  ],
+  "Try another search or show all addons.": [
+    "Измените поиск или покажите все аддоны.",
+    "Ändere die Suche oder zeige alle Addons an."
+  ],
+  "Clear filters": [
+    "Сбросить фильтры",
+    "Filter zurücksetzen"
+  ],
+  "The catalog is empty": [
+    "В каталоге пока нет аддонов",
+    "Der Katalog ist noch leer"
+  ],
+  "The catalog is not connected yet": [
+    "Каталог пока не подключён",
+    "Der Katalog ist noch nicht verbunden"
+  ],
+  "You can still install addons from a ZIP archive or a GitHub repository.": [
+    "Можно установить аддон из ZIP-архива или репозитория GitHub.",
+    "Du kannst Addons aus einem ZIP-Archiv oder einem GitHub-Repository installieren."
+  ],
+  "Game installation": [
+    "Папка игры",
+    "Spielinstallation"
+  ],
+  "Choose the Interface/AddOns folder inside your Reborn installation.": [
+    "Выберите папку Interface/AddOns внутри установленного Reborn.",
+    "Wähle den Ordner Interface/AddOns in deiner Reborn-Installation."
+  ],
+  "Save folder": [
+    "Сохранить папку",
+    "Ordner speichern"
+  ],
+  "Choose the language used in the app.": [
+    "Выберите язык интерфейса приложения.",
+    "Wähle die Sprache der App."
+  ],
+  "Settings backups": [
+    "Резервные копии настроек",
+    "Sicherung der Einstellungen"
+  ],
+  "A local copy is made before an addon is updated or removed. Close the game before restoring.": [
+    "Перед обновлением или удалением аддона создаётся локальная копия настроек. Закройте игру перед восстановлением.",
+    "Vor dem Aktualisieren oder Entfernen eines Addons wird eine lokale Sicherung erstellt. Schließe das Spiel vor der Wiederherstellung."
+  ],
+  "Based on SurvivorsForge by Rezondes.": [
+    "Основан на SurvivorsForge от Rezondes.",
+    "Basiert auf SurvivorsForge von Rezondes."
+  ],
+  "Ready": [
+    "Готово",
+    "Bereit"
+  ],
+  "Details": [
+    "Подробнее",
+    "Details"
+  ],
+  "Activity details": [
+    "Подробности операции",
+    "Details zur Aktion"
+  ],
+  "Copy": [
+    "Копировать",
+    "Kopieren"
+  ],
+  "Mixed": [
+    "Частично",
+    "Teilweise"
+  ],
+  "Checks the latest release, tags, and default branch for an addon.": [
+    "Ищет аддон в последнем релизе, тегах и основной ветке репозитория.",
+    "Sucht im neuesten Release, in Tags und im Standardbranch nach einem Addon."
+  ],
+  "Connect your game": [
+    "Подключите игру",
+    "Verbinde dein Spiel"
+  ],
+  "Choose your game folder to get started.": [
+    "Выберите папку игры, чтобы начать.",
+    "Wähle zum Start deinen Spielordner."
   ]
 }

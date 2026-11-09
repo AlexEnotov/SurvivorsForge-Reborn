@@ -1,55 +1,55 @@
 // Reborn desktop theme: cool dark surfaces, blue accents and clear system typography.
 // Shared tokens keep buttons, lists, dialogs and focus states consistent.
-// Legacy token names are retained for compatibility with the existing components.
+// Shared colors, typography and spacing are used across every screen.
 
 export global Theme {
     out property <string> font-display: "Segoe UI";
     out property <string> font-body: "Segoe UI";
 
     // Ground and surfaces
-    out property <color> bg: #0B1019;
-    out property <brush> bg-glow: @radial-gradient(circle, #162338 0%, #0B1019 75%);
-    out property <brush> panel: @linear-gradient(180deg, #151E2C 0%, #101724 100%);
+    out property <color> bg: #0B1018;
+    out property <brush> bg-glow: @radial-gradient(circle, #101929 0%, #0B1018 75%);
+    out property <brush> panel: #141D2B;
     out property <color> field: #0C1421;
-    out property <brush> row: @linear-gradient(90deg, #172234 0%, #121C2A 100%);
-    out property <brush> row-hover: @linear-gradient(90deg, #20324B 0%, #19283D 100%);
-    out property <color> overlay: #000000C0;
+    out property <brush> row: #141D2B;
+    out property <brush> row-hover: #192638;
+    out property <color> overlay: #00000099;
 
     // Lines: decorative panel edges, then interactive outlines (>= 3:1 on the ground)
-    out property <color> line: #29394F;
-    out property <color> outline: #52749B;
+    out property <color> line: #28354A;
+    out property <color> outline: #485D79;
     out property <color> outline-hover: #71B5FF;
     out property <color> outline-active: #A8D5FF;
 
     // Lettering
-    out property <color> gold: #90C8FF;
-    out property <color> gold-bright: #E0F0FF;
-    out property <brush> gold-heading: @linear-gradient(180deg, #EBF5FF 0%, #90C8FF 100%);
-    out property <color> text: #E4EBF5;
-    out property <color> text-muted: #A0B0C7;
+    out property <color> accent: #89B8FF;
+    out property <color> accent-bright: #F1F6FF;
+    out property <brush> accent-heading: #DCE9FF;
+    out property <color> text: #E5EBF4;
+    out property <color> text-muted: #9AAAC0;
     out property <color> text-disabled: #67778D;
 
     // Selected tab / primary action: blue
-    out property <brush> crimson: @linear-gradient(180deg, #235B95 0%, #173D68 100%);
-    out property <brush> crimson-hover: @linear-gradient(180deg, #2D70B2 0%, #205184 100%);
-    out property <brush> control: @linear-gradient(180deg, #1A293C 0%, #121E2E 100%);
+    out property <brush> primary: #2D69CA;
+    out property <brush> primary-hover: #3779E0;
+    out property <brush> control: #1B293C;
 
     // Status, semantic only
     out property <color> ok: #68D9A4;
     out property <color> warn: #F2BE6C;
-    out property <color> info: #90C8FF;
+    out property <color> info: #89B8FF;
     out property <color> danger: #FF8E98;
 
-    out property <length> logo: 34px;
+    out property <length> logo: 28px;
     out property <length> title: 27px;
     out property <length> heading: 19px;
-    out property <length> body: 15px;
-    out property <length> meta: 13px;
+    out property <length> body: 14px;
+    out property <length> meta: 12px;
 
     // Steam Deck Game Mode: touch screen, so controls grow to at least 44px.
     in-out property <bool> touch;
 
     out property <length> gap-tight: 8px;
     out property <length> gap-loose: 24px;
-    out property <length> radius: 8px;
+    out property <length> radius: 10px;
 }

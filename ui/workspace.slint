@@ -1,0 +1,81 @@
+import { Theme } from "theme.slint";
+
+export component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <string> count;
+    in property <bool> active;
+    callback clicked();
+    height: 44px;
+    border-radius: 8px;
+    background: root.active ? #213756 : hover.has-hover ? #192333 : transparent;
+    accessible-role: button;
+    accessible-label: root.text;
+    border-width: nav-focus.has-focus ? 1px : 0px; border-color: Theme.outline-active;
+    accessible-action-default => { root.clicked(); }
+    Rectangle { x: 0; y: 12px; width: 3px; height: 20px; border-radius: 2px; background: root.active ? Theme.accent : transparent; }
+    HorizontalLayout {
+        padding-left: 16px; padding-right: 12px; spacing: 8px;
+        Text { text: root.text; color: root.active ? Theme.text : Theme.text-muted; font-size: Theme.body; font-weight: root.active ? 600 : 400; vertical-alignment: center; horizontal-stretch: 1; }
+        if root.count != "" : Text { text: root.count; color: root.active ? Theme.accent : Theme.text-muted; font-size: Theme.meta; vertical-alignment: center; }
+    }
+    hover := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    nav-focus := FocusScope { width: 0px; height: 0px; key-pressed(event) => { if event.text == " " || event.text == Key.Return { root.clicked(); return accept; } reject } }
+}
+
+export component FilterChip inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 32px; min-width: label.preferred-width + 24px;
+    border-radius: 7px; background: root.active ? #213756 : hover.has-hover ? #192333 : transparent;
+    accessible-role: button; accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    label := Text { text: root.text; color: root.active ? Theme.accent-bright : Theme.text-muted; font-size: Theme.meta; horizontal-alignment: center; vertical-alignment: center; }
+    hover := TouchArea { mouse-cursor: pointer; clicked => { root.clicked(); } }
+    FocusScope { width: 0px; height: 0px; key-pressed(event) => { if event.text == " " || event.text == Key.Return { root.clicked(); return accept; } reject } }
+}
+
+export component SettingCard inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    height: layout.preferred-height;
+    border-radius: 12px; border-width: 1px; border-color: Theme.line; background: Theme.panel;
+    layout := VerticalLayout {
+        padding: 22px; spacing: 14px;
+        Text { text: root.title; font-size: 17px; font-weight: 600; color: Theme.text; }
+        if root.description != "" : Text { text: root.description; font-size: Theme.meta; color: Theme.text-muted; wrap: word-wrap; }
+        @children
+    }
+}
+
+export component EmptyState inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    height: 220px;
+    border-radius: 12px; border-width: 1px; border-color: Theme.line; background: Theme.panel;
+    VerticalLayout {
+        padding: 36px; spacing: 12px; alignment: center;
+        Text { text: root.title; font-size: 21px; font-weight: 600; color: Theme.text; horizontal-alignment: center; }
+        Text { text: root.description; font-size: Theme.body; color: Theme.text-muted; wrap: word-wrap; horizontal-alignment: center; }
+        @children
+    }
+}
+
+export component AddonSwitch inherits Rectangle {
+    in property <bool> on;
+    in property <bool> mixed;
+    in property <bool> enabled: true;
+    in property <string> label;
+    callback clicked();
+    width: 42px; height: 24px;
+    border-radius: 12px; background: root.on ? #3476DB : root.mixed ? #8E652C : #3A4659;
+    opacity: root.enabled ? 1 : 0.5;
+    accessible-role: checkbox; accessible-label: root.label;
+    accessible-checked: root.on;
+    border-width: focus.has-focus ? 2px : 0px;
+    border-color: Theme.outline-active;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    Rectangle { x: root.on ? 21px : 3px; y: 3px; width: 18px; height: 18px; border-radius: 9px; background: #F4F7FF; }
+    TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+    focus := FocusScope { width: 0px; height: 0px; enabled: root.enabled; key-pressed(event) => { if event.text == " " || event.text == Key.Return { root.clicked(); return accept; } reject } }
+}
