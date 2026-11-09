@@ -66,7 +66,7 @@ fn capture_ui() {
         ui.window().dispatch_event(WindowEvent::PointerPressed{position,button:PointerEventButton::Left});
         ui.window().dispatch_event(WindowEvent::PointerReleased{position,button:PointerEventButton::Left});
     };
-    click(1100.0,347.0); assert!(toggled.get(),"The visible switch invokes its addon callback");
+    click(1100.0,329.0); assert!(toggled.get(),"The visible switch invokes its addon callback");
     let launches=Rc::new(std::cell::RefCell::new(Vec::new()));
     let seen=launches.clone(); ui.on_launch_game(move |checked| seen.borrow_mut().push(checked));
     click(100.0,630.0); click(100.0,668.0);
@@ -75,7 +75,7 @@ fn capture_ui() {
     let seen=support.clone(); ui.on_open_support(move || seen.set(true));
     click(100.0,743.0);
     assert!(support.get(),"Support for the Reborn edition has its own destination");
-    click(80.0,337.0); assert_eq!(ui.get_page(),2,"Sidebar navigation opens settings");
+    click(80.0,327.0); assert_eq!(ui.get_page(),2,"Sidebar navigation opens settings");
     let press=|key:slint::SharedString| {
         ui.window().dispatch_event(WindowEvent::KeyPressed{text:key.clone()});
         ui.window().dispatch_event(WindowEvent::KeyReleased{text:key});

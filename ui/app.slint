@@ -245,7 +245,7 @@ export component AppWindow inherits Window {
         Rectangle {
             width: 216px; background: Theme.sidebar;
             VerticalLayout {
-                padding: 18px; spacing: 8px;
+                padding: 18px; padding-top: 8px; spacing: 8px;
                 VerticalLayout {
                     height: root.height < 720px ? 124px : 156px;
                     padding-bottom: 8px; spacing: 4px;
@@ -279,7 +279,7 @@ export component AppWindow inherits Window {
         }
         Rectangle { width: 1px; background: Theme.line; }
         VerticalLayout {
-            padding: 28px; spacing: 18px;
+            padding: 28px; padding-top: 10px; spacing: 18px;
             HorizontalLayout {
                 spacing: 12px;
                 VerticalLayout {
