@@ -29,5 +29,6 @@ jobs:
         with:
           name: Reborn-interface-preview
           path: .qa/ui/*.png
+          include-hidden-files: true
           retention-days: 7
       - run: cargo check --locked --workspace
